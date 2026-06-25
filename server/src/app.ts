@@ -159,7 +159,7 @@ export function createApp(services: AppServices): express.Express {
       const remote = await services.getRemoteTask(id, identity.apiKey);
       const now = new Date().toISOString();
       const status = normalizeRemoteStatus(remote.status);
-      const videoUrl = remote.content?.video_url;
+      const videoUrl = remote.content?.video_url ?? existing?.videoUrl;
       const lastFrameUrl = remote.content?.last_frame_url;
       let cosVideoKey = existing?.cosVideoKey;
       let cosVideoUrl = existing?.cosVideoUrl;
@@ -172,6 +172,7 @@ export function createApp(services: AppServices): express.Express {
 
       const task: TaskRecord = {
         id,
+        taskType: existing?.taskType ?? "video",
         model: remote.model ?? existing?.model ?? "",
         prompt: existing?.prompt ?? "",
         userKeyHash: identity.userKeyHash,

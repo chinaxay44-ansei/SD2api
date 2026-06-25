@@ -47,6 +47,55 @@ describe("App", () => {
     vi.unstubAllGlobals();
   });
 
+  it("resumes unfinished Seedance tasks from the current API key history", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/tasks") {
+        return jsonResponse({
+          tasks: [
+            {
+              id: "seedance-resume-1",
+              taskType: "video",
+              model: "doubao-seedance-2-0-260128",
+              prompt: "上次未完成的视频任务",
+              status: "queued",
+              createdAt: "2026-06-25T00:00:00.000Z",
+              updatedAt: "2026-06-25T00:00:00.000Z"
+            }
+          ]
+        });
+      }
+      if (url === "/api/tasks/seedance-resume-1") {
+        return jsonResponse({
+          task: {
+            id: "seedance-resume-1",
+            taskType: "video",
+            model: "doubao-seedance-2-0-260128",
+            prompt: "上次未完成的视频任务",
+            status: "succeeded",
+            videoUrl: "https://platform.example/resume.mp4",
+            cosVideoUrl: "https://cos.example/resume.mp4",
+            createdAt: "2026-06-25T00:00:00.000Z",
+            updatedAt: "2026-06-25T00:01:00.000Z"
+          }
+        });
+      }
+      return jsonResponse({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { container } = render(<App />);
+    await activateApiKey();
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/tasks/seedance-resume-1", expect.objectContaining({ headers: expect.any(Headers) }));
+    });
+    expect(await screen.findByText(/已恢复 1 个未完成视频任务/)).toBeInTheDocument();
+    expect(container.querySelector(".video-stage video")).toHaveAttribute("src", "https://cos.example/resume.mp4");
+
+    vi.unstubAllGlobals();
+  });
+
   it("updates mode-specific guidance when first-last frame mode is selected", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ tasks: [] }))));
 

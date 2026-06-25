@@ -302,6 +302,49 @@ describe("createApp", () => {
     });
   });
 
+  it("archives a stored platform video URL when a refreshed succeeded task is missing a COS URL", async () => {
+    const existing: TaskRecord = {
+      id: "seedance-task-stored-url",
+      taskType: "video",
+      model: "doubao-seedance-2-0-260128",
+      prompt: "已成功但未归档的视频",
+      status: "succeeded",
+      userKeyHash,
+      videoUrl: "https://platform.example/stored.mp4",
+      createdAt: "2026-06-24T00:00:00.000Z",
+      updatedAt: "2026-06-24T00:00:00.000Z"
+    };
+    const services = createServices({
+      getRemoteTask: vi.fn(async () => ({
+        id: "seedance-task-stored-url",
+        model: "doubao-seedance-2-0-260128",
+        status: "succeeded" as const,
+        content: {},
+        error: null
+      })),
+      archiveOutput: vi.fn(async () => ({
+        key: "outputs/seedance-task-stored-url.mp4",
+        signedUrl: "https://cos.example/outputs/seedance-task-stored-url.mp4"
+      }))
+    });
+    vi.mocked(services.taskStore.get).mockResolvedValue(existing);
+    const app = createApp(services);
+
+    const response = await request(app)
+      .get("/api/tasks/seedance-task-stored-url")
+      .set("x-openai-next-key", userApiKey)
+      .expect(200);
+
+    expect(services.archiveOutput).toHaveBeenCalledWith("seedance-task-stored-url", "https://platform.example/stored.mp4");
+    expect(response.body.task).toMatchObject({
+      id: "seedance-task-stored-url",
+      taskType: "video",
+      status: "succeeded",
+      videoUrl: "https://platform.example/stored.mp4",
+      cosVideoUrl: "https://cos.example/outputs/seedance-task-stored-url.mp4"
+    });
+  });
+
   it("normalizes OpenAI Next processing status to running so the frontend keeps polling", async () => {
     const existing: TaskRecord = {
       id: "seedance-task-3",

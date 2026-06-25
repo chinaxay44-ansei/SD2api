@@ -141,9 +141,13 @@ export default function App() {
 
   const activeMode = modeOptions.find((option) => option.id === mode) ?? modeOptions[0];
   const previewUrl = activeTask?.cosVideoUrl ?? activeTask?.videoUrl;
-  const canPoll = activeTask?.status === "queued" || activeTask?.status === "running";
   const videoTasks = tasks.filter((task) => (task.taskType ?? "video") === "video");
   const imageTasks = tasks.filter((task) => task.taskType === "image");
+  const resumableVideoTaskIds = videoTasks
+    .filter((task) => shouldResumeVideoTask(task))
+    .map((task) => task.id)
+    .sort();
+  const resumableVideoTaskKey = resumableVideoTaskIds.join("|");
   const imageCount = assets.filter((asset) => asset.kind === "image").length;
   const videoCount = assets.filter((asset) => asset.kind === "video").length;
   const audioCount = assets.filter((asset) => asset.kind === "audio").length;
@@ -182,6 +186,8 @@ export default function App() {
     try {
       const data = await fetchJson<{ tasks: TaskRecord[] }>("/api/tasks", withOpenAiNextKey(undefined, requestApiKey));
       setTasks(data.tasks);
+      setActiveTask((current) => selectRestoredVideoTask(data.tasks, current?.id));
+      setActiveImageTask((current) => selectRestoredImageTask(data.tasks, current?.id));
     } catch (refreshError) {
       setError(errorMessage(refreshError));
     }
@@ -191,24 +197,44 @@ export default function App() {
     if (apiKey) void refreshTasks(apiKey);
   }, [apiKey, refreshTasks]);
 
+  const refreshVideoTaskStatus = useCallback(async (taskId: string, options: { activate?: boolean } = {}) => {
+    if (!apiKey) {
+      setError("请先填写并使用 OpenAI Next API Key。");
+      return undefined;
+    }
+
+    const data = await fetchJson<{ task: TaskRecord }>(`/api/tasks/${taskId}`, withOpenAiNextKey(undefined, apiKey));
+    setTasks((current) => mergeTask(current, data.task));
+    setActiveTask((current) => (options.activate || current?.id === taskId ? data.task : current));
+    return data.task;
+  }, [apiKey]);
+
   useEffect(() => {
-    if (!canPoll || !activeTask || !apiKey) return undefined;
+    if (!apiKey || !resumableVideoTaskKey) return undefined;
 
-    const handle = window.setInterval(async () => {
-      try {
-        const data = await fetchJson<{ task: TaskRecord }>(
-          `/api/tasks/${activeTask.id}`,
-          withOpenAiNextKey(undefined, apiKey)
-        );
-        setActiveTask(data.task);
-        setTasks((current) => mergeTask(current, data.task));
-      } catch (pollError) {
-        setError(errorMessage(pollError));
+    let cancelled = false;
+    const ids = resumableVideoTaskKey.split("|").filter(Boolean);
+
+    async function pollPendingTasks() {
+      for (const id of ids) {
+        if (cancelled) return;
+        try {
+          await refreshVideoTaskStatus(id);
+        } catch (pollError) {
+          if (!cancelled) setError(errorMessage(pollError));
+        }
       }
-    }, 4000);
+    }
 
-    return () => window.clearInterval(handle);
-  }, [activeTask, apiKey, canPoll]);
+    setMessage(`已恢复 ${ids.length} 个未完成视频任务的自动轮询。`);
+    void pollPendingTasks();
+    const handle = window.setInterval(() => void pollPendingTasks(), 4000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(handle);
+    };
+  }, [apiKey, refreshVideoTaskStatus, resumableVideoTaskKey]);
 
   const validation = useMemo(() => {
     const issues: string[] = [];
@@ -405,9 +431,7 @@ export default function App() {
         setError("请先填写并使用 OpenAI Next API Key。");
         return;
       }
-      const data = await fetchJson<{ task: TaskRecord }>(`/api/tasks/${taskId}`, withOpenAiNextKey(undefined, apiKey));
-      setActiveTask(data.task);
-      setTasks((current) => mergeTask(current, data.task));
+      await refreshVideoTaskStatus(taskId, { activate: true });
       setMessage("任务状态已刷新。");
     } catch (refreshError) {
       setError(errorMessage(refreshError));
@@ -1163,6 +1187,37 @@ function taskHistoryMeta(task: TaskRecord): string {
     return `图片 · ${task.outputImages?.length ?? 0} 张 · ${updatedAt}`;
   }
   return `${task.model.includes("fast") ? "Fast" : "Standard"} · ${updatedAt}`;
+}
+
+function isVideoTask(task: TaskRecord): boolean {
+  return (task.taskType ?? "video") === "video";
+}
+
+function isImageTask(task: TaskRecord): boolean {
+  return task.taskType === "image";
+}
+
+function shouldResumeVideoTask(task: TaskRecord): boolean {
+  if (!isVideoTask(task)) return false;
+  return task.status === "queued" || task.status === "running" || (task.status === "succeeded" && Boolean(task.videoUrl) && !task.cosVideoUrl);
+}
+
+function selectRestoredVideoTask(tasks: TaskRecord[], currentId?: string): TaskRecord | null {
+  const videoTasks = tasks.filter(isVideoTask);
+  if (currentId) {
+    const current = videoTasks.find((task) => task.id === currentId);
+    if (current) return current;
+  }
+  return videoTasks.find(shouldResumeVideoTask) ?? videoTasks[0] ?? null;
+}
+
+function selectRestoredImageTask(tasks: TaskRecord[], currentId?: string): TaskRecord | null {
+  const imageTasks = tasks.filter(isImageTask);
+  if (currentId) {
+    const current = imageTasks.find((task) => task.id === currentId);
+    if (current) return current;
+  }
+  return imageTasks[0] ?? null;
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {

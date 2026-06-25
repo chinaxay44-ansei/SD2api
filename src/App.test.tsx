@@ -268,10 +268,92 @@ describe("App", () => {
     vi.unstubAllGlobals();
   });
 
+  it("uploads Seedance files directly to COS with signed PUT URLs", async () => {
+    let presignBody: any;
+    let presignKey: string | null = null;
+    let uploadInit: RequestInit | undefined;
+    const file = new File(["video-bytes"], "clip.mp4", { type: "video/mp4" });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/tasks") return jsonResponse({ tasks: [] });
+      if (url === "/api/assets/presign") {
+        presignBody = JSON.parse(String(init?.body));
+        presignKey = new Headers(init?.headers).get("x-openai-next-key");
+        return jsonResponse({
+          asset: buildAssetRecord(file),
+          upload: {
+            method: "PUT",
+            url: "https://cos-upload.example/clip.mp4?sign=1",
+            headers: { "Content-Type": "video/mp4" }
+          }
+        });
+      }
+      if (url === "https://cos-upload.example/clip.mp4?sign=1") {
+        uploadInit = init;
+        return new Response("", { status: 200 });
+      }
+      if (url === "/api/assets") throw new Error("multipart endpoint should not be used");
+      return jsonResponse({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { container } = render(<App />);
+    await activateApiKey();
+    await uploadFiles(container, [file]);
+
+    expect(presignKey).toBe(userApiKey);
+    expect(presignBody).toEqual({ originalName: "clip.mp4", mimeType: "video/mp4", size: file.size });
+    expect(uploadInit?.method).toBe("PUT");
+    expect(new Headers(uploadInit?.headers).get("Content-Type")).toBe("video/mp4");
+    expect(uploadInit?.body).toBe(file);
+    expect(screen.getByText("视频 1")).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalledWith("/api/assets", expect.anything());
+
+    vi.unstubAllGlobals();
+  });
+
+  it("uploads GPT image reference files directly to COS with signed PUT URLs", async () => {
+    let uploadCalled = false;
+    const file = new File(["image-bytes"], "reference.png", { type: "image/png" });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/tasks") return jsonResponse({ tasks: [] });
+      if (url === "/api/assets/presign") {
+        return jsonResponse({
+          asset: buildAssetRecord(file),
+          upload: {
+            method: "PUT",
+            url: "https://cos-upload.example/reference.png?sign=1",
+            headers: { "Content-Type": "image/png" }
+          }
+        });
+      }
+      if (url === "https://cos-upload.example/reference.png?sign=1") {
+        uploadCalled = init?.method === "PUT" && init.body === file;
+        return new Response("", { status: 200 });
+      }
+      if (url === "/api/assets") throw new Error("multipart endpoint should not be used");
+      return jsonResponse({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { container } = render(<App />);
+    await activateApiKey();
+    fireEvent.click(screen.getByRole("button", { name: "图片生成" }));
+    await uploadFiles(container, [file]);
+
+    expect(uploadCalled).toBe(true);
+    expect(screen.getByText("图片 1")).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalledWith("/api/assets", expect.anything());
+
+    vi.unstubAllGlobals();
+  });
+
   it("labels uploaded Seedance assets with kind-specific order numbers", async () => {
     vi.stubGlobal("fetch", createAssetFetchMock());
 
     const { container } = render(<App />);
+    await activateApiKey();
     await uploadFiles(container, [
       new File(["image"], "cover.png", { type: "image/png" }),
       new File(["video"], "clip.mp4", { type: "video/mp4" }),
@@ -290,6 +372,7 @@ describe("App", () => {
 
     const { container } = render(<App />);
     expect(container.querySelector(".results-column .panel h2")).toHaveTextContent("参考素材");
+    await activateApiKey();
 
     await uploadFiles(container, [new File(["image"], "cover.png", { type: "image/png" })]);
 
@@ -304,6 +387,7 @@ describe("App", () => {
     vi.stubGlobal("fetch", createAssetFetchMock());
 
     const { container } = render(<App />);
+    await activateApiKey();
     await uploadFiles(container, [
       new File(["image"], "cover.png", { type: "image/png" }),
       new File(["video"], "clip.mp4", { type: "video/mp4" }),
@@ -439,22 +523,22 @@ function createAssetFetchMock(
     if (url === "/api/tasks") {
       return jsonResponse({ tasks: [] });
     }
-    if (url === "/api/assets") {
-      const file = (init?.body as FormData).get("file") as File;
-      const id = file.name.replace(/\W+/g, "-").replace(/-$/, "");
-      const kind = file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : "audio";
+    if (url === "/api/assets/presign") {
+      const body = JSON.parse(String(init?.body));
       return jsonResponse({
-        asset: {
-          id,
-          kind,
-          key: `assets/${file.name}`,
-          mimeType: file.type,
-          size: file.size,
-          signedUrl: `https://cos.example/${file.name}`,
-          createdAt: "2026-06-24T00:00:00.000Z",
-          originalName: file.name
+        asset: buildAssetRecordFromMeta(body.originalName, body.mimeType, body.size),
+        upload: {
+          method: "PUT",
+          url: `https://cos-upload.example/${body.originalName}?sign=1`,
+          headers: { "Content-Type": body.mimeType }
         }
       });
+    }
+    if (url.startsWith("https://cos-upload.example/")) {
+      return new Response("", { status: 200 });
+    }
+    if (url === "/api/assets") {
+      throw new Error("multipart endpoint should not be used");
     }
     if (url === "/api/generate") {
       const body = JSON.parse(String(init?.body));
@@ -505,6 +589,25 @@ function createAssetFetchMock(
     }
     return jsonResponse({});
   });
+}
+
+function buildAssetRecord(file: File) {
+  return buildAssetRecordFromMeta(file.name, file.type, file.size);
+}
+
+function buildAssetRecordFromMeta(originalName: string, mimeType: string, size: number) {
+  const id = originalName.replace(/\W+/g, "-").replace(/-$/, "");
+  const kind = mimeType.startsWith("image/") ? "image" : mimeType.startsWith("video/") ? "video" : "audio";
+  return {
+    id,
+    kind,
+    key: `assets/${originalName}`,
+    mimeType,
+    size,
+    signedUrl: `https://cos.example/${originalName}`,
+    createdAt: "2026-06-24T00:00:00.000Z",
+    originalName
+  };
 }
 
 async function uploadFiles(container: HTMLElement, files: File[]) {

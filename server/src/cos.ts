@@ -3,7 +3,15 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Express } from "express";
 import { config } from "./config.js";
-import type { ArchiveResult, ArchivedGeneratedImage, AssetRecord, GeneratedImage, MediaKind } from "./types.js";
+import type {
+  ArchiveResult,
+  ArchivedGeneratedImage,
+  AssetRecord,
+  AssetUploadRequest,
+  AssetUploadTicket,
+  GeneratedImage,
+  MediaKind
+} from "./types.js";
 
 const require = createRequire(import.meta.url);
 const COS: any = require("cos-nodejs-sdk-v5");
@@ -41,6 +49,39 @@ export async function uploadAssetFile(file: Express.Multer.File): Promise<AssetR
     signedUrl,
     createdAt: new Date().toISOString(),
     originalName: file.originalname
+  };
+}
+
+export async function createAssetUploadTicket(file: AssetUploadRequest): Promise<AssetUploadTicket> {
+  const kind = mediaKindFromMime(file.mimeType);
+  if (!kind) {
+    throw new Error("仅支持图片、视频或音频素材文件。");
+  }
+
+  const key = buildObjectKey("inputs", file.originalName);
+  const [uploadUrl, signedUrl] = await Promise.all([
+    getSignedUploadObjectUrl(key),
+    getSignedObjectUrl(key)
+  ]);
+
+  return {
+    asset: {
+      id: randomUUID(),
+      kind,
+      key,
+      mimeType: file.mimeType,
+      size: file.size,
+      signedUrl,
+      createdAt: new Date().toISOString(),
+      originalName: file.originalName
+    },
+    upload: {
+      method: "PUT",
+      url: uploadUrl,
+      headers: {
+        "Content-Type": file.mimeType
+      }
+    }
   };
 }
 
@@ -184,6 +225,28 @@ async function getSignedObjectUrl(key: string): Promise<string> {
       (error: Error | null, data: { Url?: string }) => {
         if (error) reject(error);
         else if (!data?.Url) reject(new Error("COS 未返回签名 URL。"));
+        else resolve(data.Url);
+      }
+    );
+  });
+}
+
+async function getSignedUploadObjectUrl(key: string): Promise<string> {
+  assertCosConfigured();
+
+  return new Promise((resolve, reject) => {
+    cos.getObjectUrl(
+      {
+        Bucket: config.cos.bucket,
+        Region: config.cos.region,
+        Key: key,
+        Sign: true,
+        Method: "PUT",
+        Expires: config.upload.signedUrlExpiresSeconds
+      },
+      (error: Error | null, data: { Url?: string }) => {
+        if (error) reject(error);
+        else if (!data?.Url) reject(new Error("COS 未返回上传签名 URL。"));
         else resolve(data.Url);
       }
     );

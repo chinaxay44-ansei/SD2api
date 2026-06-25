@@ -19,6 +19,15 @@ export interface AssetRecord {
   originalName?: string;
 }
 
+export interface AssetUploadTicket {
+  asset: AssetRecord;
+  upload: {
+    method: "PUT";
+    url: string;
+    headers: Record<string, string>;
+  };
+}
+
 export interface TaskRecord {
   id: string;
   taskType?: TaskType;

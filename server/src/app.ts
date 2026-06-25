@@ -7,6 +7,8 @@ import { buildSeedancePayload, validateGenerateRequest } from "./seedance.js";
 import type {
   ArchiveResult,
   ArchivedGeneratedImage,
+  AssetUploadRequest,
+  AssetUploadTicket,
   GeneratedImage,
   GptImageRequest,
   GptImageResult,
@@ -20,6 +22,7 @@ import type { TaskStore } from "./taskStore.js";
 
 export interface AppServices {
   uploadAsset(file: Express.Multer.File): Promise<unknown>;
+  createAssetUpload(file: AssetUploadRequest): Promise<AssetUploadTicket>;
   createTask(payload: SeedancePayload, apiKey: string): Promise<{ id: string }>;
   getRemoteTask(id: string, apiKey: string): Promise<SeedanceTaskResponse>;
   archiveOutput(taskId: string, videoUrl: string): Promise<ArchiveResult>;
@@ -58,6 +61,25 @@ export function createApp(services: AppServices): express.Express {
       const identity = requestIdentity(_request, response);
       if (!identity) return;
       response.json({ tasks: await services.taskStore.list(identity.userKeyHash) });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/assets/presign", async (request, response, next) => {
+    try {
+      const identity = requestIdentity(request, response);
+      if (!identity) return;
+
+      const assetRequest = normalizeAssetUploadRequest(request.body);
+      const validation = validateAssetUploadRequest(assetRequest);
+      if (!validation.ok) {
+        response.status(400).json({ errors: validation.errors });
+        return;
+      }
+
+      const ticket = await services.createAssetUpload(assetRequest);
+      response.json(ticket);
     } catch (error) {
       next(error);
     }
@@ -212,6 +234,23 @@ function requestIdentity(request: express.Request, response: express.Response): 
     apiKey,
     userKeyHash: hashOpenAiNextApiKey(apiKey)
   };
+}
+
+function normalizeAssetUploadRequest(body: any): AssetUploadRequest {
+  return {
+    originalName: String(body?.originalName ?? "").trim(),
+    mimeType: String(body?.mimeType ?? "").trim(),
+    size: Number(body?.size ?? 0)
+  };
+}
+
+function validateAssetUploadRequest(request: AssetUploadRequest): { ok: true } | { ok: false; errors: string[] } {
+  const errors: string[] = [];
+  if (!request.originalName) errors.push("素材文件名不能为空。");
+  if (!request.mimeType) errors.push("素材 MIME 类型不能为空。");
+  if (!Number.isFinite(request.size) || request.size <= 0) errors.push("素材文件大小无效。");
+  if (request.size > config.upload.maxBytes) errors.push("素材文件过大。");
+  return errors.length === 0 ? { ok: true } : { ok: false, errors };
 }
 
 function normalizeGenerateRequest(body: any): GenerateRequest {

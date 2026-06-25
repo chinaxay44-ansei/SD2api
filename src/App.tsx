@@ -18,6 +18,7 @@ import {
 import type {
   AspectRatio,
   AssetRecord,
+  AssetUploadTicket,
   GenerateMode,
   GeneratedImage,
   GptImageSize,
@@ -282,6 +283,10 @@ export default function App() {
 
   async function handleFiles(files: FileList | null) {
     if (!files?.length) return;
+    if (!apiKey) {
+      setError("请先填写并使用 OpenAI Next API Key。");
+      return;
+    }
     setIsUploading(true);
     setError("");
     setMessage("");
@@ -289,13 +294,7 @@ export default function App() {
     try {
       const uploaded: AssetRecord[] = [];
       for (const file of Array.from(files)) {
-        const formData = new FormData();
-        formData.append("file", file);
-        const data = await fetchJson<{ asset: AssetRecord }>("/api/assets", {
-          method: "POST",
-          body: formData
-        });
-        uploaded.push(data.asset);
+        uploaded.push(await uploadFileDirectToCos(file, apiKey));
       }
       setAssets((current) => [...current, ...uploaded]);
       setMessage(`已上传 ${uploaded.length} 个素材到 COS。`);
@@ -310,6 +309,11 @@ export default function App() {
   async function handleImageFiles(files: FileList | null) {
     const incoming = Array.from(files ?? []);
     if (incoming.length === 0) return;
+    if (!apiKey) {
+      setImageError("请先填写并使用 OpenAI Next API Key。");
+      if (imageFileInputRef.current) imageFileInputRef.current.value = "";
+      return;
+    }
 
     if (incoming.some((file) => !file.type.startsWith("image/"))) {
       setImageError("图片页面只接受图片文件。");
@@ -329,13 +333,7 @@ export default function App() {
     try {
       const uploaded: AssetRecord[] = [];
       for (const file of incoming) {
-        const formData = new FormData();
-        formData.append("file", file);
-        const data = await fetchJson<{ asset: AssetRecord }>("/api/assets", {
-          method: "POST",
-          body: formData
-        });
-        uploaded.push(data.asset);
+        uploaded.push(await uploadFileDirectToCos(file, apiKey));
       }
       setImageAssets((current) => [...current, ...uploaded]);
       setImageMessage(`已上传 ${uploaded.length} 张参考图片到 COS。`);
@@ -1183,6 +1181,39 @@ function selectRestoredImageTask(tasks: TaskRecord[], currentId?: string): TaskR
 
 function durationOptionLabel(duration: number): string {
   return duration === -1 ? "自动" : `${duration} 秒`;
+}
+
+async function uploadFileDirectToCos(file: File, apiKey: string): Promise<AssetRecord> {
+  const mimeType = file.type || "application/octet-stream";
+  const ticket = await fetchJson<AssetUploadTicket>("/api/assets/presign", withOpenAiNextKey({
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      originalName: file.name,
+      mimeType,
+      size: file.size
+    })
+  }, apiKey));
+
+  let uploadResponse: Response;
+  try {
+    uploadResponse = await fetch(ticket.upload.url, {
+      method: ticket.upload.method,
+      headers: ticket.upload.headers,
+      body: file
+    });
+  } catch (uploadError) {
+    throw new Error(`COS 直传失败：${errorMessage(uploadError)}。请确认 COS 跨域规则允许当前站点 PUT 上传。`);
+  }
+
+  if (!uploadResponse.ok) {
+    const detail = await uploadResponse.text().catch(() => "");
+    throw new Error(
+      `COS 直传失败：${uploadResponse.status} ${uploadResponse.statusText}${detail ? ` ${detail.slice(0, 180)}` : ""}`
+    );
+  }
+
+  return ticket.asset;
 }
 
 function readStoredApiKey(): string {

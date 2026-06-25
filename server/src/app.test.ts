@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { createApp } from "./app.js";
 import type { AppServices } from "./app.js";
-import type { TaskRecord } from "./types.js";
+import type { MediaKind, TaskRecord } from "./types.js";
 
 const userApiKey = "user-key-a";
 const userKeyHash = hashKey(userApiKey);
@@ -13,6 +13,26 @@ function createServices(overrides: Partial<AppServices> = {}): AppServices {
 
   return {
     uploadAsset: vi.fn(),
+    createAssetUpload: vi.fn(async (file) => {
+      const kind: MediaKind = file.mimeType.startsWith("video/") ? "video" : file.mimeType.startsWith("audio/") ? "audio" : "image";
+      return {
+        asset: {
+          id: "asset-direct-1",
+          kind,
+          key: `inputs/${file.originalName}`,
+          mimeType: file.mimeType,
+          size: file.size,
+          signedUrl: `https://cos.example/read/${file.originalName}`,
+          createdAt: "2026-06-25T00:00:00.000Z",
+          originalName: file.originalName
+        },
+        upload: {
+          method: "PUT" as const,
+          url: `https://cos.example/upload/${file.originalName}`,
+          headers: { "Content-Type": file.mimeType }
+        }
+      };
+    }),
     createTask: vi.fn(),
     getRemoteTask: vi.fn(),
     archiveOutput: vi.fn(),
@@ -43,6 +63,47 @@ function createServices(overrides: Partial<AppServices> = {}): AppServices {
 }
 
 describe("createApp", () => {
+  it("requires an OpenAI Next API key before signing direct asset uploads", async () => {
+    const app = createApp(createServices());
+
+    const response = await request(app)
+      .post("/api/assets/presign")
+      .send({ originalName: "clip.mp4", mimeType: "video/mp4", size: 7 * 1024 * 1024 })
+      .expect(401);
+
+    expect(response.body.error).toBe("请先填写 OpenAI Next API Key。");
+  });
+
+  it("creates a direct COS upload ticket from file metadata instead of receiving the file body", async () => {
+    const services = createServices();
+    const app = createApp(services);
+
+    const response = await request(app)
+      .post("/api/assets/presign")
+      .set("x-openai-next-key", userApiKey)
+      .send({ originalName: "clip.mp4", mimeType: "video/mp4", size: 7 * 1024 * 1024 })
+      .expect(200);
+
+    expect(services.createAssetUpload).toHaveBeenCalledWith({
+      originalName: "clip.mp4",
+      mimeType: "video/mp4",
+      size: 7 * 1024 * 1024
+    });
+    expect(response.body).toMatchObject({
+      asset: {
+        id: "asset-direct-1",
+        kind: "video",
+        originalName: "clip.mp4",
+        signedUrl: "https://cos.example/read/clip.mp4"
+      },
+      upload: {
+        method: "PUT",
+        url: "https://cos.example/upload/clip.mp4",
+        headers: { "Content-Type": "video/mp4" }
+      }
+    });
+  });
+
   it("rejects asset uploads without a file", async () => {
     const app = createApp(createServices());
 

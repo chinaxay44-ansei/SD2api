@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import express from "express";
 import { createApp } from "./app.js";
 import { config } from "./config.js";
-import { archiveGeneratedImage, archiveOutputVideo, uploadAssetFile } from "./cos.js";
+import { archiveGeneratedImage, archiveOutputVideo, createAssetUploadTicket, uploadAssetFile } from "./cos.js";
 import { generateGptImage } from "./imageClient.js";
 import { createSeedanceTask, getSeedanceTask } from "./seedanceClient.js";
 import { createTaskStore } from "./taskStoreFactory.js";
@@ -16,6 +16,7 @@ const clientDist = path.resolve(process.cwd(), "dist", "client");
 
 const app = createApp({
   uploadAsset: uploadAssetFile,
+  createAssetUpload: createAssetUploadTicket,
   createTask: createSeedanceTask,
   getRemoteTask: getSeedanceTask,
   archiveOutput: archiveOutputVideo,

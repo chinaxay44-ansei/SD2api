@@ -1,13 +1,14 @@
 import path from "node:path";
 import { createApp } from "../server/src/app.js";
 import { config } from "../server/src/config.js";
-import { archiveGeneratedImage, archiveOutputVideo, uploadAssetFile } from "../server/src/cos.js";
+import { archiveGeneratedImage, archiveOutputVideo, createAssetUploadTicket, uploadAssetFile } from "../server/src/cos.js";
 import { generateGptImage } from "../server/src/imageClient.js";
 import { createSeedanceTask, getSeedanceTask } from "../server/src/seedanceClient.js";
 import { createTaskStore } from "../server/src/taskStoreFactory.js";
 
 const app = createApp({
   uploadAsset: uploadAssetFile,
+  createAssetUpload: createAssetUploadTicket,
   createTask: createSeedanceTask,
   getRemoteTask: getSeedanceTask,
   archiveOutput: archiveOutputVideo,

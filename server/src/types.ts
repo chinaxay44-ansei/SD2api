@@ -28,6 +28,21 @@ export interface AssetRecord {
   originalName?: string;
 }
 
+export interface AssetUploadRequest {
+  originalName: string;
+  mimeType: string;
+  size: number;
+}
+
+export interface AssetUploadTicket {
+  asset: AssetRecord;
+  upload: {
+    method: "PUT";
+    url: string;
+    headers: Record<string, string>;
+  };
+}
+
 export interface GenerateRequest {
   mode: GenerateMode;
   model: SeedanceModel;

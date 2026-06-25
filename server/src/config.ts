@@ -23,7 +23,8 @@ export const config = {
     signedUrlExpiresSeconds: numberEnv("COS_SIGNED_URL_EXPIRES_SECONDS", 7 * 24 * 60 * 60)
   },
   upload: {
-    maxBytes: 500 * 1024 * 1024
+    maxBytes: 500 * 1024 * 1024,
+    signedUrlExpiresSeconds: numberEnv("COS_UPLOAD_SIGNED_URL_EXPIRES_SECONDS", 15 * 60)
   },
   supabase: {
     url: process.env.SUPABASE_URL?.trim() ?? "",

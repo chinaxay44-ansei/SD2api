@@ -20,7 +20,6 @@ import type {
   AssetRecord,
   GenerateMode,
   GeneratedImage,
-  GptImageResponseFormat,
   GptImageSize,
   MediaKind,
   Resolution,
@@ -114,8 +113,6 @@ export default function App() {
   const [ratio, setRatio] = useState<AspectRatio>("adaptive");
   const [duration, setDuration] = useState(15);
   const [generateAudio, setGenerateAudio] = useState(true);
-  const [returnLastFrame, setReturnLastFrame] = useState(false);
-  const [watermark, setWatermark] = useState(false);
   const [assets, setAssets] = useState<AssetRecord[]>([]);
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
   const [activeTask, setActiveTask] = useState<TaskRecord | null>(null);
@@ -131,7 +128,6 @@ export default function App() {
   const [imagePrompt, setImagePrompt] = useState(imageSamplePrompt);
   const [imageSize, setImageSize] = useState<GptImageSize>("1024x1024");
   const [imageOutputCount, setImageOutputCount] = useState(1);
-  const [imageResponseFormat, setImageResponseFormat] = useState<GptImageResponseFormat>("url");
   const [imageAssets, setImageAssets] = useState<AssetRecord[]>([]);
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
   const [imageMessage, setImageMessage] = useState("");
@@ -140,7 +136,6 @@ export default function App() {
   const [isImageGenerating, setIsImageGenerating] = useState(false);
   const imageFileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const activeMode = modeOptions.find((option) => option.id === mode) ?? modeOptions[0];
   const previewUrl = activeTask?.cosVideoUrl ?? activeTask?.videoUrl;
   const videoTasks = tasks.filter((task) => (task.taskType ?? "video") === "video");
   const imageTasks = tasks.filter((task) => task.taskType === "image");
@@ -153,10 +148,7 @@ export default function App() {
   const videoCount = assets.filter((asset) => asset.kind === "video").length;
   const audioCount = assets.filter((asset) => asset.kind === "audio").length;
   const brandTitle = tool === "video" ? "Seedance 2 视频生成" : "GPT Image 2 图片生成";
-  const brandSubtitle =
-    tool === "video"
-      ? "本地自用控制台 · 后端代理调用 OpenAI Next / Seedance"
-      : "本地自用控制台 · 后端代理调用 OpenAI Next / GPT Image 2";
+  const brandSubtitle = tool === "video" ? "本地自用控制台 · 后端代理调用 OpenAI Next / Seedance" : "";
   const selectedImageSizeOption = imageSizeOptions.find((option) => option.id === imageSize) ?? imageSizeOptions[1];
   const availableImageResolutionOptions = useMemo(
     () => imageSizeOptions.filter((option) => option.ratio === selectedImageSizeOption.ratio),
@@ -378,8 +370,8 @@ export default function App() {
           ratio,
           duration,
           generateAudio,
-          returnLastFrame,
-          watermark
+          returnLastFrame: false,
+          watermark: false
         })
       }, apiKey));
       setActiveTask(data.task);
@@ -412,7 +404,7 @@ export default function App() {
           assets: imageAssets,
           n: imageOutputCount,
           size: imageSize,
-          responseFormat: imageResponseFormat
+          responseFormat: "url"
         })
       }, apiKey));
       const savedImages = data.task.outputImages ?? data.images;
@@ -469,7 +461,7 @@ export default function App() {
           </span>
           <div>
             <h1>{brandTitle}</h1>
-            <p>{brandSubtitle}</p>
+            {brandSubtitle && <p>{brandSubtitle}</p>}
           </div>
         </div>
         <div className="topbar-actions">
@@ -519,16 +511,6 @@ export default function App() {
             void handleGenerate();
           }}
         >
-          <div className="panel-heading">
-            <div>
-              <h2>生成设置</h2>
-              <p>{activeMode.guidance}</p>
-            </div>
-            <button className="icon-button" type="button" title="刷新任务" onClick={() => void refreshTasks()}>
-              <RefreshCw size={17} />
-            </button>
-          </div>
-
           <div className="segmented" aria-label="生成模式">
             {modeOptions.map((option) => (
               <button
@@ -603,8 +585,6 @@ export default function App() {
 
           <div className="toggle-row">
             <Toggle label="生成音频" checked={generateAudio} onChange={setGenerateAudio} />
-            <Toggle label="返回尾帧" checked={returnLastFrame} onChange={setReturnLastFrame} />
-            <Toggle label="水印" checked={watermark} onChange={setWatermark} />
           </div>
 
           {validation.length > 0 && (
@@ -721,13 +701,6 @@ export default function App() {
             void handleGenerateImage();
           }}
         >
-          <div className="panel-heading">
-            <div>
-              <h2>图片设置</h2>
-              <p>模型固定为 gpt-image-2，参考图片通过 COS 签名 URL 传入。</p>
-            </div>
-          </div>
-
           <label className="field">
             <span>模型</span>
             <input value="gpt-image-2" readOnly />
@@ -784,30 +757,16 @@ export default function App() {
             </div>
           </div>
 
-          <div className="settings-grid">
-
-            <label className="field">
-              <span>数量</span>
-              <input
-                type="number"
-                min="1"
-                max="4"
-                value={imageOutputCount}
-                onChange={(event) => setImageOutputCount(Number(event.target.value))}
-              />
-            </label>
-
-            <label className="field">
-              <span>返回格式</span>
-              <select
-                value={imageResponseFormat}
-                onChange={(event) => setImageResponseFormat(event.target.value as GptImageResponseFormat)}
-              >
-                <option value="url">url</option>
-                <option value="b64_json">b64_json</option>
-              </select>
-            </label>
-          </div>
+          <label className="field">
+            <span>数量</span>
+            <input
+              type="number"
+              min="1"
+              max="4"
+              value={imageOutputCount}
+              onChange={(event) => setImageOutputCount(Number(event.target.value))}
+            />
+          </label>
 
           {imageValidation.length > 0 && (
             <div className="inline-warning">

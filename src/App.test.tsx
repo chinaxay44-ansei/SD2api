@@ -22,6 +22,10 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: /生成视频/ })).toBeInTheDocument();
     expect(screen.getByText("任务状态")).toBeInTheDocument();
     expect(screen.getByText("最近任务")).toBeInTheDocument();
+    expect(screen.queryByText("生成设置")).not.toBeInTheDocument();
+    expect(screen.queryByText("只需要提示词，模型会自动生成画面与镜头。")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("返回尾帧")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("水印")).not.toBeInTheDocument();
     expect(screen.queryByText("COS: ap-shanghai")).not.toBeInTheDocument();
     expect(container.textContent).not.toContain("sk-");
     expect(container.textContent).not.toContain("SecretKey");
@@ -211,13 +215,14 @@ describe("App", () => {
     vi.unstubAllGlobals();
   });
 
-  it("updates mode-specific guidance when first-last frame mode is selected", async () => {
+  it("switches video generation modes without showing helper copy", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ tasks: [] }))));
 
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "首尾帧" }));
 
-    expect(await screen.findByText("需要 2 个图片素材，上传顺序即首帧、尾帧。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "首尾帧" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByText("需要 2 个图片素材，上传顺序即首帧、尾帧。")).not.toBeInTheDocument();
 
     vi.unstubAllGlobals();
   });
@@ -232,11 +237,15 @@ describe("App", () => {
     expect(screen.getByLabelText("图片提示词")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /生成图片/ })).toBeInTheDocument();
     expect(screen.getByText("参考图片")).toBeInTheDocument();
+    expect(screen.queryByText("本地自用控制台 · 后端代理调用 OpenAI Next / GPT Image 2")).not.toBeInTheDocument();
+    expect(screen.queryByText("图片设置")).not.toBeInTheDocument();
+    expect(screen.queryByText("模型固定为 gpt-image-2，参考图片通过 COS 签名 URL 传入。")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("返回格式")).not.toBeInTheDocument();
     expect(
       Array.from(container.querySelectorAll('[aria-label="图片生成工作台"] .panel-heading h2')).map((heading) =>
         heading.textContent?.trim()
       )
-    ).toEqual(["图片设置", "参考图片", "生成结果", "最近图片任务"]);
+    ).toEqual(["参考图片", "生成结果", "最近图片任务"]);
     expect(container.querySelector(".results-column .panel:first-child h2")).toHaveTextContent("参考图片");
     expect(container.textContent).not.toContain("sk-");
     expect(container.textContent).not.toContain("SecretKey");

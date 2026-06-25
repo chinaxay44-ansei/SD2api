@@ -1,10 +1,16 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 
 const userApiKey = "user-key-a";
+const apiKeyStorageKey = "sd2api.openAiNextApiKey";
 
 describe("App", () => {
+  afterEach(() => {
+    window.localStorage.clear();
+    vi.unstubAllGlobals();
+  });
+
   it("renders the two-column Seedance generation workspace without exposing secrets", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ tasks: [] }))));
 
@@ -19,6 +25,29 @@ describe("App", () => {
     expect(container.textContent).not.toContain("sk-");
     expect(container.textContent).not.toContain("SecretKey");
     expect(container.textContent).not.toContain("AKID");
+
+    vi.unstubAllGlobals();
+  });
+
+  it("restores the OpenAI Next API key from browser storage and loads user tasks", async () => {
+    window.localStorage.setItem(apiKeyStorageKey, userApiKey);
+    const fetchMock = vi.fn(async () => jsonResponse({ tasks: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    expect(screen.getByLabelText("OpenAI Next API Key")).toHaveValue(userApiKey);
+    expect(await screen.findByText("已按当前 Key 隔离任务。")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks",
+        expect.objectContaining({
+          headers: expect.any(Headers)
+        })
+      );
+    });
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(new Headers(init.headers).get("x-openai-next-key")).toBe(userApiKey);
 
     vi.unstubAllGlobals();
   });
@@ -92,6 +121,65 @@ describe("App", () => {
     });
     expect(await screen.findByText(/已恢复 1 个未完成视频任务/)).toBeInTheDocument();
     expect(container.querySelector(".video-stage video")).toHaveAttribute("src", "https://cos.example/resume.mp4");
+
+    vi.unstubAllGlobals();
+  });
+
+  it("manually refreshes the active Seedance task status", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/tasks") return jsonResponse({ tasks: [] });
+      if (url === "/api/generate") {
+        const body = JSON.parse(String(init?.body));
+        return jsonResponse({
+          task: {
+            id: "task-refresh",
+            taskType: "video",
+            model: body.model,
+            prompt: body.prompt,
+            status: "succeeded",
+            createdAt: "2026-06-25T00:00:00.000Z",
+            updatedAt: "2026-06-25T00:00:00.000Z"
+          }
+        });
+      }
+      if (url === "/api/tasks/task-refresh") {
+        return jsonResponse({
+          task: {
+            id: "task-refresh",
+            taskType: "video",
+            model: "doubao-seedance-2-0-260128",
+            prompt: "刷新状态测试",
+            status: "succeeded",
+            videoUrl: "https://platform.example/task-refresh.mp4",
+            cosVideoUrl: "https://cos.example/task-refresh.mp4",
+            createdAt: "2026-06-25T00:00:00.000Z",
+            updatedAt: "2026-06-25T00:01:00.000Z"
+          }
+        });
+      }
+      return jsonResponse({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+    await activateApiKey();
+    fireEvent.click(screen.getByRole("button", { name: /生成视频/ }));
+
+    expect(await screen.findByText(/任务 task-refresh/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "刷新状态" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/task-refresh",
+        expect.objectContaining({
+          headers: expect.any(Headers)
+        })
+      );
+    });
+    const taskCall = fetchMock.mock.calls.find(([input]) => String(input) === "/api/tasks/task-refresh");
+    expect(new Headers(taskCall?.[1]?.headers).get("x-openai-next-key")).toBe(userApiKey);
+    expect(await screen.findByText("任务状态已刷新。")).toBeInTheDocument();
 
     vi.unstubAllGlobals();
   });

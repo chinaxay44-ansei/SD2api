@@ -76,6 +76,7 @@ const kindLabels: Record<MediaKind, string> = {
 
 const samplePrompt = "一段 8 秒的上海雨夜街头电影感镜头，湿润路面反射霓虹，镜头缓慢推进，环境声包含雨声与远处车辆声。";
 const imageSamplePrompt = "一张干净高级的产品海报，中央是一只磨砂玻璃香水瓶，柔和棚拍光，浅灰背景，细节清晰。";
+const apiKeyStorageKey = "sd2api.openAiNextApiKey";
 
 const imageRatioOptions: Array<{ id: ImageSizeRatio; label: string; iconRatio: string }> = [
   { id: "auto", label: "自适应", iconRatio: "1 / 1" },
@@ -119,8 +120,8 @@ export default function App() {
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
   const [activeTask, setActiveTask] = useState<TaskRecord | null>(null);
   const [activeImageTask, setActiveImageTask] = useState<TaskRecord | null>(null);
-  const [apiKeyInput, setApiKeyInput] = useState("");
-  const [apiKey, setApiKey] = useState("");
+  const [apiKeyInput, setApiKeyInput] = useState(() => readStoredApiKey());
+  const [apiKey, setApiKey] = useState(() => readStoredApiKey());
   const [message, setMessage] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [isUploading, setIsUploading] = useState(false);
@@ -277,6 +278,7 @@ export default function App() {
       return;
     }
     setApiKey(nextApiKey);
+    storeApiKey(nextApiKey);
     setTasks([]);
     setActiveTask(null);
     setActiveImageTask(null);
@@ -681,6 +683,10 @@ export default function App() {
             </div>
 
             <div className="result-actions">
+              <button type="button" onClick={() => activeTask && void refreshActiveTask(activeTask.id)} disabled={!activeTask}>
+                <RefreshCw size={16} />
+                <span>刷新状态</span>
+              </button>
               <button type="button" onClick={() => void copyPreviewUrl()} disabled={!previewUrl}>
                 <Copy size={16} />
                 <span>复制链接</span>
@@ -1218,6 +1224,28 @@ function selectRestoredImageTask(tasks: TaskRecord[], currentId?: string): TaskR
     if (current) return current;
   }
   return imageTasks[0] ?? null;
+}
+
+function readStoredApiKey(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return window.localStorage.getItem(apiKeyStorageKey)?.trim() ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function storeApiKey(apiKey: string) {
+  if (typeof window === "undefined") return;
+  try {
+    if (apiKey) {
+      window.localStorage.setItem(apiKeyStorageKey, apiKey);
+    } else {
+      window.localStorage.removeItem(apiKeyStorageKey);
+    }
+  } catch {
+    // Local storage can be unavailable in private or restricted browser contexts.
+  }
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {

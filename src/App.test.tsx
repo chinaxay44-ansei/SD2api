@@ -107,6 +107,56 @@ describe("App", () => {
     vi.unstubAllGlobals();
   });
 
+  it("allows concurrent Seedance generation submissions", async () => {
+    let releaseFirst: (() => void) | undefined;
+    const submittedPrompts: string[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/tasks") return jsonResponse({ tasks: [] });
+      if (url === "/api/generate") {
+        const body = JSON.parse(String(init?.body));
+        submittedPrompts.push(body.prompt);
+        if (submittedPrompts.length === 1) {
+          await new Promise<void>((resolve) => {
+            releaseFirst = resolve;
+          });
+        }
+        return jsonResponse({
+          task: {
+            id: `video-task-${submittedPrompts.length}`,
+            taskType: "video",
+            model: body.model,
+            prompt: body.prompt,
+            status: "queued",
+            createdAt: "2026-06-25T00:00:00.000Z",
+            updatedAt: "2026-06-25T00:00:00.000Z"
+          }
+        });
+      }
+      return jsonResponse({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+    await activateApiKey();
+    const submitButton = screen.getByRole("button", { name: /生成视频/ });
+
+    fireEvent.click(submitButton);
+    expect(await screen.findByText("提交中 1")).toBeInTheDocument();
+    expect(submitButton).not.toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("提示词"), { target: { value: "第二个并发视频任务" } });
+    fireEvent.click(submitButton);
+
+    await waitFor(() => {
+      expect(submittedPrompts).toHaveLength(2);
+    });
+    releaseFirst?.();
+    await screen.findByText(/任务 video-task-1|任务 video-task-2/);
+
+    vi.unstubAllGlobals();
+  });
+
   it("resumes unfinished Seedance tasks from the current API key history", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -152,6 +202,70 @@ describe("App", () => {
     });
     expect(await screen.findByText(/已恢复 1 个未完成视频任务/)).toBeInTheDocument();
     expect(container.querySelector(".video-stage video")).toHaveAttribute("src", "https://cos.example/resume.mp4");
+
+    vi.unstubAllGlobals();
+  });
+
+  it("polls multiple unfinished Seedance tasks concurrently", async () => {
+    let releaseFirstPoll: (() => void) | undefined;
+    const pollStarted: string[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/tasks") {
+        return jsonResponse({
+          tasks: ["resume-a", "resume-b"].map((id) => ({
+            id,
+            taskType: "video",
+            model: "doubao-seedance-2-0-260128",
+            prompt: id,
+            status: "queued",
+            createdAt: "2026-06-25T00:00:00.000Z",
+            updatedAt: "2026-06-25T00:00:00.000Z"
+          }))
+        });
+      }
+      if (url === "/api/tasks/resume-a") {
+        pollStarted.push("resume-a");
+        await new Promise<void>((resolve) => {
+          releaseFirstPoll = resolve;
+        });
+        return jsonResponse({
+          task: {
+            id: "resume-a",
+            taskType: "video",
+            model: "doubao-seedance-2-0-260128",
+            prompt: "resume-a",
+            status: "running",
+            createdAt: "2026-06-25T00:00:00.000Z",
+            updatedAt: "2026-06-25T00:00:01.000Z"
+          }
+        });
+      }
+      if (url === "/api/tasks/resume-b") {
+        pollStarted.push("resume-b");
+        return jsonResponse({
+          task: {
+            id: "resume-b",
+            taskType: "video",
+            model: "doubao-seedance-2-0-260128",
+            prompt: "resume-b",
+            status: "running",
+            createdAt: "2026-06-25T00:00:00.000Z",
+            updatedAt: "2026-06-25T00:00:01.000Z"
+          }
+        });
+      }
+      return jsonResponse({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+    await activateApiKey();
+
+    await waitFor(() => {
+      expect(pollStarted).toEqual(["resume-a", "resume-b"]);
+    });
+    releaseFirstPoll?.();
 
     vi.unstubAllGlobals();
   });
@@ -475,6 +589,73 @@ describe("App", () => {
     expect(submittedBody.size).toBe("2160x3840");
     expect(await screen.findByText("已生成并保存 1 张图片到 COS。")).toBeInTheDocument();
     expect(screen.getByText(/图片 · 1 张/)).toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
+
+  it("allows concurrent GPT image generation submissions", async () => {
+    let releaseFirst: (() => void) | undefined;
+    const submittedPrompts: string[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/tasks") return jsonResponse({ tasks: [] });
+      if (url === "/api/images/generate") {
+        const body = JSON.parse(String(init?.body));
+        submittedPrompts.push(body.prompt);
+        if (submittedPrompts.length === 1) {
+          await new Promise<void>((resolve) => {
+            releaseFirst = resolve;
+          });
+        }
+        return jsonResponse({
+          task: {
+            id: `image-task-${submittedPrompts.length}`,
+            taskType: "image",
+            model: "gpt-image-2",
+            prompt: body.prompt,
+            status: "succeeded",
+            createdAt: "2026-06-25T00:00:00.000Z",
+            updatedAt: "2026-06-25T00:00:00.000Z",
+            outputImages: [
+              {
+                cosKey: `outputs/image-task-${submittedPrompts.length}.png`,
+                cosUrl: `https://cos.example/outputs/image-task-${submittedPrompts.length}.png`,
+                mimeType: "image/png",
+                size: 1024
+              }
+            ]
+          },
+          images: [
+            {
+              cosKey: `outputs/image-task-${submittedPrompts.length}.png`,
+              cosUrl: `https://cos.example/outputs/image-task-${submittedPrompts.length}.png`,
+              mimeType: "image/png",
+              size: 1024
+            }
+          ]
+        });
+      }
+      return jsonResponse({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+    await activateApiKey();
+    fireEvent.click(screen.getByRole("button", { name: "图片生成" }));
+    const submitButton = screen.getByRole("button", { name: /生成图片/ });
+
+    fireEvent.click(submitButton);
+    expect(await screen.findByText("生成中 1")).toBeInTheDocument();
+    expect(submitButton).not.toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("图片提示词"), { target: { value: "第二个并发图片任务" } });
+    fireEvent.click(submitButton);
+
+    await waitFor(() => {
+      expect(submittedPrompts).toHaveLength(2);
+    });
+    releaseFirst?.();
+    await screen.findByText("已生成并保存 1 张图片到 COS。");
 
     vi.unstubAllGlobals();
   });

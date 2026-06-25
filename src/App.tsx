@@ -123,7 +123,7 @@ export default function App() {
   const [message, setMessage] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [isUploading, setIsUploading] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [pendingVideoGenerations, setPendingVideoGenerations] = useState(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [previewAsset, setPreviewAsset] = useState<AssetRecord | null>(null);
   const [imagePrompt, setImagePrompt] = useState(imageSamplePrompt);
@@ -134,10 +134,12 @@ export default function App() {
   const [imageMessage, setImageMessage] = useState("");
   const [imageError, setImageError] = useState("");
   const [isImageUploading, setIsImageUploading] = useState(false);
-  const [isImageGenerating, setIsImageGenerating] = useState(false);
+  const [pendingImageGenerations, setPendingImageGenerations] = useState(0);
   const imageFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const previewUrl = activeTask?.cosVideoUrl ?? activeTask?.videoUrl;
+  const isGenerating = pendingVideoGenerations > 0;
+  const isImageGenerating = pendingImageGenerations > 0;
   const videoTasks = tasks.filter((task) => (task.taskType ?? "video") === "video");
   const imageTasks = tasks.filter((task) => task.taskType === "image");
   const resumableVideoTaskIds = videoTasks
@@ -210,12 +212,12 @@ export default function App() {
     const ids = resumableVideoTaskKey.split("|").filter(Boolean);
 
     async function pollPendingTasks() {
-      for (const id of ids) {
-        if (cancelled) return;
-        try {
-          await refreshVideoTaskStatus(id);
-        } catch (pollError) {
-          if (!cancelled) setError(errorMessage(pollError));
+      const results = await Promise.allSettled(ids.map((id) => refreshVideoTaskStatus(id)));
+      if (cancelled) return;
+      for (const result of results) {
+        if (result.status === "rejected") {
+          setError(errorMessage(result.reason));
+          break;
         }
       }
     }
@@ -351,7 +353,7 @@ export default function App() {
       return;
     }
 
-    setIsGenerating(true);
+    setPendingVideoGenerations((count) => count + 1);
     setError("");
     setMessage("任务已提交，等待平台返回任务 ID。");
 
@@ -378,7 +380,7 @@ export default function App() {
     } catch (generateError) {
       setError(errorMessage(generateError));
     } finally {
-      setIsGenerating(false);
+      setPendingVideoGenerations((count) => Math.max(0, count - 1));
     }
   }
 
@@ -388,7 +390,7 @@ export default function App() {
       return;
     }
 
-    setIsImageGenerating(true);
+    setPendingImageGenerations((count) => count + 1);
     setImageError("");
     setImageMessage("正在提交图片生成请求。");
 
@@ -413,7 +415,7 @@ export default function App() {
     } catch (generateError) {
       setImageError(errorMessage(generateError));
     } finally {
-      setIsImageGenerating(false);
+      setPendingImageGenerations((count) => Math.max(0, count - 1));
     }
   }
 
@@ -592,9 +594,9 @@ export default function App() {
             </div>
           )}
 
-          <button className="primary-action" type="submit" disabled={isGenerating || isUploading}>
+          <button className="primary-action" type="submit" disabled={isUploading}>
             {isGenerating ? <LoaderCircle className="spin" size={18} /> : <Play size={18} />}
-            <span>{isGenerating ? "提交中" : "生成视频"}</span>
+            <span>{isGenerating ? `提交中 ${pendingVideoGenerations}` : "生成视频"}</span>
           </button>
         </form>
 
@@ -773,9 +775,9 @@ export default function App() {
             </div>
           )}
 
-          <button className="primary-action" type="submit" disabled={isImageGenerating || isImageUploading}>
+          <button className="primary-action" type="submit" disabled={isImageUploading}>
             {isImageGenerating ? <LoaderCircle className="spin" size={18} /> : <ImageIcon size={18} />}
-            <span>{isImageGenerating ? "生成中" : "生成图片"}</span>
+            <span>{isImageGenerating ? `生成中 ${pendingImageGenerations}` : "生成图片"}</span>
           </button>
         </form>
 

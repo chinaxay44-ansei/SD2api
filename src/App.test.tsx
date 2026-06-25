@@ -22,6 +22,7 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: /生成视频/ })).toBeInTheDocument();
     expect(screen.getByText("任务状态")).toBeInTheDocument();
     expect(screen.getByText("最近任务")).toBeInTheDocument();
+    expect(screen.queryByText("COS: ap-shanghai")).not.toBeInTheDocument();
     expect(container.textContent).not.toContain("sk-");
     expect(container.textContent).not.toContain("SecretKey");
     expect(container.textContent).not.toContain("AKID");
@@ -72,6 +73,32 @@ describe("App", () => {
     });
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(new Headers(init.headers).get("x-openai-next-key")).toBe(userApiKey);
+
+    vi.unstubAllGlobals();
+  });
+
+  it("uses a video duration dropdown defaulting to 15 seconds", async () => {
+    let submittedBody: any;
+    vi.stubGlobal(
+      "fetch",
+      createAssetFetchMock((body) => {
+        submittedBody = body;
+      })
+    );
+
+    render(<App />);
+    await activateApiKey();
+
+    const durationSelect = screen.getByRole("combobox", { name: "时长" });
+    expect(durationSelect).toHaveValue("15");
+    expect(within(durationSelect).getByRole("option", { name: "15 秒" })).toBeInTheDocument();
+    expect(screen.queryByRole("spinbutton", { name: "时长" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /生成视频/ }));
+
+    await waitFor(() => {
+      expect(submittedBody?.duration).toBe(15);
+    });
 
     vi.unstubAllGlobals();
   });

@@ -3,7 +3,6 @@ import {
   AlertCircle,
   CheckCircle2,
   Clipboard,
-  Cloud,
   Copy,
   Download,
   FileAudio,
@@ -74,9 +73,10 @@ const kindLabels: Record<MediaKind, string> = {
   audio: "音频"
 };
 
-const samplePrompt = "一段 8 秒的上海雨夜街头电影感镜头，湿润路面反射霓虹，镜头缓慢推进，环境声包含雨声与远处车辆声。";
+const samplePrompt = "一段 15 秒的上海雨夜街头电影感镜头，湿润路面反射霓虹，镜头缓慢推进，环境声包含雨声与远处车辆声。";
 const imageSamplePrompt = "一张干净高级的产品海报，中央是一只磨砂玻璃香水瓶，柔和棚拍光，浅灰背景，细节清晰。";
 const apiKeyStorageKey = "sd2api.openAiNextApiKey";
+const durationOptions = [-1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 
 const imageRatioOptions: Array<{ id: ImageSizeRatio; label: string; iconRatio: string }> = [
   { id: "auto", label: "自适应", iconRatio: "1 / 1" },
@@ -112,7 +112,7 @@ export default function App() {
   const [prompt, setPrompt] = useState(samplePrompt);
   const [resolution, setResolution] = useState<Resolution>("720p");
   const [ratio, setRatio] = useState<AspectRatio>("adaptive");
-  const [duration, setDuration] = useState(5);
+  const [duration, setDuration] = useState(15);
   const [generateAudio, setGenerateAudio] = useState(true);
   const [returnLastFrame, setReturnLastFrame] = useState(false);
   const [watermark, setWatermark] = useState(false);
@@ -507,10 +507,6 @@ export default function App() {
               </button>
             ))}
           </nav>
-          <div className="topbar-status">
-            <Cloud size={16} />
-            <span>COS: ap-shanghai</span>
-          </div>
         </div>
       </header>
 
@@ -595,13 +591,13 @@ export default function App() {
 
             <label className="field">
               <span>时长</span>
-              <input
-                type="number"
-                min="-1"
-                max="15"
-                value={duration}
-                onChange={(event) => setDuration(Number(event.target.value))}
-              />
+              <select value={duration} onChange={(event) => setDuration(Number(event.target.value))}>
+                {durationOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {durationOptionLabel(option)}
+                  </option>
+                ))}
+              </select>
             </label>
           </div>
 
@@ -1224,6 +1220,10 @@ function selectRestoredImageTask(tasks: TaskRecord[], currentId?: string): TaskR
     if (current) return current;
   }
   return imageTasks[0] ?? null;
+}
+
+function durationOptionLabel(duration: number): string {
+  return duration === -1 ? "自动" : `${duration} 秒`;
 }
 
 function readStoredApiKey(): string {

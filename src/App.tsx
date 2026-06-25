@@ -107,7 +107,7 @@ const imageSizeOptions: Array<{
 
 export default function App() {
   const [tool, setTool] = useState<ToolId>("video");
-  const [mode, setMode] = useState<GenerateMode>("text");
+  const [mode, setMode] = useState<GenerateMode>("multimodal");
   const [model, setModel] = useState<SeedanceModel>("doubao-seedance-2-0-260128");
   const [prompt, setPrompt] = useState(samplePrompt);
   const [resolution, setResolution] = useState<Resolution>("720p");
@@ -151,6 +151,14 @@ export default function App() {
   const videoCount = assets.filter((asset) => asset.kind === "video").length;
   const audioCount = assets.filter((asset) => asset.kind === "audio").length;
   const brandTitle = tool === "video" ? "Seedance 2 视频生成" : "GPT Image 2 图片生成";
+  const videoAssetEmptyText =
+    mode === "text"
+      ? "还没有参考素材。文生视频可以不上传。"
+      : mode === "firstFrame"
+        ? "还没有参考素材。首帧图生至少上传 1 张图片。"
+        : mode === "firstLastFrame"
+          ? "还没有参考素材。首尾帧需要 2 张图片。"
+          : "还没有参考素材。多模态参考至少上传 1 个图片或视频。";
   const selectedImageSizeOption = imageSizeOptions.find((option) => option.id === imageSize) ?? imageSizeOptions[1];
   const availableImageResolutionOptions = useMemo(
     () => imageSizeOptions.filter((option) => option.ratio === selectedImageSizeOption.ratio),
@@ -624,6 +632,7 @@ export default function App() {
 
             <AssetList
               assets={assets}
+              emptyText={videoAssetEmptyText}
               onPreview={setPreviewAsset}
               onRemove={(id) => setAssets((current) => current.filter((asset) => asset.id !== id))}
               onReorder={(draggedId, targetId) => setAssets((current) => reorderAssets(current, draggedId, targetId))}

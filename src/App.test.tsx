@@ -35,6 +35,19 @@ describe("App", () => {
     vi.unstubAllGlobals();
   });
 
+  it("defaults Seedance generation mode to multimodal reference", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ tasks: [] }))));
+
+    render(<App />);
+
+    expect(await screen.findByRole("button", { name: "多模态参考" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "文生视频" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByText("还没有参考素材。多模态参考至少上传 1 个图片或视频。")).toBeInTheDocument();
+    expect(screen.queryByText("还没有参考素材。文生视频可以不上传。")).not.toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
+
   it("restores the OpenAI Next API key from browser storage and loads user tasks", async () => {
     window.localStorage.setItem(apiKeyStorageKey, userApiKey);
     const fetchMock = vi.fn(async () => jsonResponse({ tasks: [] }));
@@ -93,6 +106,7 @@ describe("App", () => {
 
     render(<App />);
     await activateApiKey();
+    fireEvent.click(screen.getByRole("button", { name: "文生视频" }));
 
     const durationSelect = screen.getByRole("combobox", { name: "时长" });
     expect(durationSelect).toHaveValue("15");
@@ -140,6 +154,7 @@ describe("App", () => {
 
     render(<App />);
     await activateApiKey();
+    fireEvent.click(screen.getByRole("button", { name: "文生视频" }));
     const submitButton = screen.getByRole("button", { name: /生成视频/ });
 
     fireEvent.click(submitButton);
@@ -313,6 +328,7 @@ describe("App", () => {
 
     render(<App />);
     await activateApiKey();
+    fireEvent.click(screen.getByRole("button", { name: "文生视频" }));
     fireEvent.click(screen.getByRole("button", { name: /生成视频/ }));
 
     expect(await screen.findByText(/任务 task-refresh/)).toBeInTheDocument();

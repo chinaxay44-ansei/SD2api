@@ -30,7 +30,7 @@ describe("imageClient", () => {
     });
 
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect(String(url)).toBe("https://draw.openai-next.com/v1/images/generations");
+    expect(String(url)).toBe("https://api.openai-next.com/v1/images/generations");
     expect(init?.headers).toMatchObject({
       Authorization: "Bearer user-key-a",
       "Content-Type": "application/json"

@@ -1,11 +1,10 @@
 import type { GeneratedImage, GptImageRequest, GptImageResult } from "./types.js";
-
-const IMAGE_GENERATIONS_URL = "https://draw.openai-next.com/v1/images/generations";
+import { config } from "./config.js";
 
 export async function generateGptImage(payload: GptImageRequest, apiKey: string): Promise<GptImageResult> {
   let response: Response;
   try {
-    response = await fetch(IMAGE_GENERATIONS_URL, {
+    response = await fetch(config.openAiNext.imageGenerationsUrl, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,

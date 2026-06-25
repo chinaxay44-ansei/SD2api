@@ -11,7 +11,9 @@ export const config = {
     port: numberEnv("SERVER_PORT", numberEnv("PORT", 8787))
   },
   openAiNext: {
-    baseUrl: process.env.OPENAI_NEXT_SEEDANCE_BASE_URL?.trim() || "https://api.openai-next.com/seedance"
+    baseUrl: process.env.OPENAI_NEXT_SEEDANCE_BASE_URL?.trim() || "https://api.openai-next.com/seedance",
+    imageGenerationsUrl:
+      process.env.OPENAI_NEXT_IMAGE_GENERATIONS_URL?.trim() || "https://api.openai-next.com/v1/images/generations"
   },
   cos: {
     bucket: env("COS_BUCKET"),

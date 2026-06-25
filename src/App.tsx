@@ -151,7 +151,6 @@ export default function App() {
   const videoCount = assets.filter((asset) => asset.kind === "video").length;
   const audioCount = assets.filter((asset) => asset.kind === "audio").length;
   const brandTitle = tool === "video" ? "Seedance 2 视频生成" : "GPT Image 2 图片生成";
-  const brandSubtitle = tool === "video" ? "本地自用控制台 · 后端代理调用 OpenAI Next / Seedance" : "";
   const selectedImageSizeOption = imageSizeOptions.find((option) => option.id === imageSize) ?? imageSizeOptions[1];
   const availableImageResolutionOptions = useMemo(
     () => imageSizeOptions.filter((option) => option.ratio === selectedImageSizeOption.ratio),
@@ -461,7 +460,6 @@ export default function App() {
           </span>
           <div>
             <h1>{brandTitle}</h1>
-            {brandSubtitle && <p>{brandSubtitle}</p>}
           </div>
         </div>
         <div className="topbar-actions">
@@ -649,7 +647,7 @@ export default function App() {
 
             <div className="video-stage">
               {previewUrl ? (
-                <video src={previewUrl} controls playsInline />
+                <video src={previewUrl} controls playsInline preload="metadata" autoPlay={false} />
               ) : (
                 <div className="empty-preview">
                   <FileVideo size={36} />
@@ -1005,7 +1003,7 @@ function AssetPreviewThumb(props: { asset: AssetRecord }) {
     return <img src={props.asset.signedUrl} alt="" />;
   }
   if (props.asset.kind === "video") {
-    return <video src={props.asset.signedUrl} muted playsInline preload="metadata" />;
+    return <video src={props.asset.signedUrl} muted playsInline preload="metadata" autoPlay={false} />;
   }
   return (
     <div className="asset-audio-thumb">
@@ -1038,7 +1036,7 @@ function AssetPreviewModal(props: { asset: AssetRecord; onClose(): void }) {
         </div>
         <div className="preview-stage">
           {props.asset.kind === "image" && <img src={props.asset.signedUrl} alt={props.asset.originalName ?? "素材预览"} />}
-          {props.asset.kind === "video" && <video src={props.asset.signedUrl} controls playsInline />}
+          {props.asset.kind === "video" && <video src={props.asset.signedUrl} controls playsInline preload="metadata" autoPlay={false} />}
           {props.asset.kind === "audio" && <audio src={props.asset.signedUrl} controls />}
         </div>
       </section>

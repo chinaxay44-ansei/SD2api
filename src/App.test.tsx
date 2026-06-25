@@ -24,6 +24,7 @@ describe("App", () => {
     expect(screen.getByText("最近任务")).toBeInTheDocument();
     expect(screen.queryByText("生成设置")).not.toBeInTheDocument();
     expect(screen.queryByText("只需要提示词，模型会自动生成画面与镜头。")).not.toBeInTheDocument();
+    expect(screen.queryByText(/本地自用控制台/)).not.toBeInTheDocument();
     expect(screen.queryByLabelText("返回尾帧")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("水印")).not.toBeInTheDocument();
     expect(screen.queryByText("COS: ap-shanghai")).not.toBeInTheDocument();
@@ -201,7 +202,10 @@ describe("App", () => {
       expect(fetchMock).toHaveBeenCalledWith("/api/tasks/seedance-resume-1", expect.objectContaining({ headers: expect.any(Headers) }));
     });
     expect(await screen.findByText(/已恢复 1 个未完成视频任务/)).toBeInTheDocument();
-    expect(container.querySelector(".video-stage video")).toHaveAttribute("src", "https://cos.example/resume.mp4");
+    const videoPreview = container.querySelector(".video-stage video");
+    expect(videoPreview).toHaveAttribute("src", "https://cos.example/resume.mp4");
+    expect(videoPreview).not.toHaveAttribute("autoplay");
+    expect(videoPreview).toHaveAttribute("preload", "metadata");
 
     vi.unstubAllGlobals();
   });
@@ -516,10 +520,10 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "关闭预览" }));
 
     fireEvent.click(screen.getByTestId("asset-card-clip-mp4"));
-    expect(screen.getByRole("dialog", { name: "素材预览" }).querySelector("video")).toHaveAttribute(
-      "src",
-      "https://cos.example/clip.mp4"
-    );
+    const previewVideo = screen.getByRole("dialog", { name: "素材预览" }).querySelector("video");
+    expect(previewVideo).toHaveAttribute("src", "https://cos.example/clip.mp4");
+    expect(previewVideo).not.toHaveAttribute("autoplay");
+    expect(previewVideo).toHaveAttribute("preload", "metadata");
     fireEvent.click(screen.getByRole("button", { name: "关闭预览" }));
 
     fireEvent.click(screen.getByTestId("asset-card-voice-mp3"));

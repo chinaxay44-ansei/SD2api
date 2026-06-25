@@ -31,6 +31,8 @@ import type {
 } from "./types";
 
 type ToolId = "video" | "image";
+type ImageSizeRatio = "auto" | "1:1" | "3:2" | "2:3" | "16:9" | "9:16";
+type ImageResolutionChoice = "auto" | "1k" | "1.5k" | "2k" | "4k";
 
 const toolOptions: Array<{ id: ToolId; label: string }> = [
   { id: "video", label: "视频生成" },
@@ -75,16 +77,31 @@ const kindLabels: Record<MediaKind, string> = {
 const samplePrompt = "一段 8 秒的上海雨夜街头电影感镜头，湿润路面反射霓虹，镜头缓慢推进，环境声包含雨声与远处车辆声。";
 const imageSamplePrompt = "一张干净高级的产品海报，中央是一只磨砂玻璃香水瓶，柔和棚拍光，浅灰背景，细节清晰。";
 
-const imageSizeOptions: Array<{ id: GptImageSize; label: string }> = [
-  { id: "1024x1024", label: "1024 x 1024" },
-  { id: "1536x1024", label: "1536 x 1024" },
-  { id: "1024x1536", label: "1024 x 1536" },
-  { id: "1024x1792", label: "1024 x 1792" },
-  { id: "2048x2048", label: "2048 x 2048" },
-  { id: "2048x1152", label: "2048 x 1152" },
-  { id: "3840x2160", label: "3840 x 2160" },
-  { id: "2160x3840", label: "2160 x 3840" },
-  { id: "auto", label: "auto" }
+const imageRatioOptions: Array<{ id: ImageSizeRatio; label: string; iconRatio: string }> = [
+  { id: "auto", label: "自适应", iconRatio: "1 / 1" },
+  { id: "1:1", label: "1:1", iconRatio: "1 / 1" },
+  { id: "2:3", label: "2:3", iconRatio: "2 / 3" },
+  { id: "3:2", label: "3:2", iconRatio: "3 / 2" },
+  { id: "16:9", label: "16:9", iconRatio: "16 / 9" },
+  { id: "9:16", label: "9:16", iconRatio: "9 / 16" }
+];
+
+const imageSizeOptions: Array<{
+  id: GptImageSize;
+  ratio: ImageSizeRatio;
+  resolution: ImageResolutionChoice;
+  resolutionLabel: string;
+  pixelLabel: string;
+}> = [
+  { id: "auto", ratio: "auto", resolution: "auto", resolutionLabel: "自动", pixelLabel: "auto" },
+  { id: "1024x1024", ratio: "1:1", resolution: "1k", resolutionLabel: "1k", pixelLabel: "1024x1024" },
+  { id: "2048x2048", ratio: "1:1", resolution: "2k", resolutionLabel: "2k", pixelLabel: "2048x2048" },
+  { id: "1536x1024", ratio: "3:2", resolution: "1.5k", resolutionLabel: "1.5k", pixelLabel: "1536x1024" },
+  { id: "1024x1536", ratio: "2:3", resolution: "1.5k", resolutionLabel: "1.5k", pixelLabel: "1024x1536" },
+  { id: "2048x1152", ratio: "16:9", resolution: "2k", resolutionLabel: "2k", pixelLabel: "2048x1152" },
+  { id: "3840x2160", ratio: "16:9", resolution: "4k", resolutionLabel: "4k", pixelLabel: "3840x2160" },
+  { id: "1024x1792", ratio: "9:16", resolution: "1k", resolutionLabel: "1k", pixelLabel: "1024x1792" },
+  { id: "2160x3840", ratio: "9:16", resolution: "4k", resolutionLabel: "4k", pixelLabel: "2160x3840" }
 ];
 
 export default function App() {
@@ -132,6 +149,23 @@ export default function App() {
     tool === "video"
       ? "本地自用控制台 · 后端代理调用 OpenAI Next / Seedance"
       : "本地自用控制台 · 后端代理调用 OpenAI Next / GPT Image 2";
+  const selectedImageSizeOption = imageSizeOptions.find((option) => option.id === imageSize) ?? imageSizeOptions[1];
+  const availableImageResolutionOptions = useMemo(
+    () => imageSizeOptions.filter((option) => option.ratio === selectedImageSizeOption.ratio),
+    [selectedImageSizeOption.ratio]
+  );
+
+  function selectImageRatio(nextRatio: ImageSizeRatio) {
+    const candidates = imageSizeOptions.filter((option) => option.ratio === nextRatio);
+    const sameResolution = candidates.find((option) => option.resolution === selectedImageSizeOption.resolution);
+    const nextSize = sameResolution ?? candidates[0];
+    if (nextSize) setImageSize(nextSize.id);
+  }
+
+  function selectImageResolution(nextResolution: ImageResolutionChoice) {
+    const nextSize = availableImageResolutionOptions.find((option) => option.resolution === nextResolution);
+    if (nextSize) setImageSize(nextSize.id);
+  }
 
   const refreshTasks = useCallback(async (overrideApiKey?: string) => {
     const requestApiKey = (overrideApiKey ?? apiKey).trim();
@@ -669,17 +703,47 @@ export default function App() {
             />
           </label>
 
+          <div className="image-size-control">
+            <div className="size-control-heading">
+              <span>比例</span>
+              <strong>{selectedImageSizeOption.ratio === "auto" ? "自动尺寸" : selectedImageSizeOption.pixelLabel}</strong>
+            </div>
+            <div className="image-ratio-grid" role="group" aria-label="图片比例">
+              {imageRatioOptions.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={selectedImageSizeOption.ratio === option.id ? "ratio-option selected" : "ratio-option"}
+                  aria-pressed={selectedImageSizeOption.ratio === option.id}
+                  onClick={() => selectImageRatio(option.id)}
+                >
+                  <span className="ratio-icon" style={{ aspectRatio: option.iconRatio }} />
+                  <span>{option.label}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="size-control-heading">
+              <span>分辨率</span>
+              <strong>{selectedImageSizeOption.pixelLabel}</strong>
+            </div>
+            <div className="image-resolution-grid" role="group" aria-label="图片分辨率">
+              {availableImageResolutionOptions.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={selectedImageSizeOption.id === option.id ? "resolution-option selected" : "resolution-option"}
+                  aria-pressed={selectedImageSizeOption.id === option.id}
+                  onClick={() => selectImageResolution(option.resolution)}
+                >
+                  <strong>{option.resolutionLabel}</strong>
+                  <span>{option.pixelLabel}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="settings-grid">
-            <label className="field">
-              <span>尺寸</span>
-              <select value={imageSize} onChange={(event) => setImageSize(event.target.value as GptImageSize)}>
-                {imageSizeOptions.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
 
             <label className="field">
               <span>数量</span>

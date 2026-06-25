@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import App from "./App";
 
@@ -196,9 +196,11 @@ describe("App", () => {
 
   it("submits GPT image requests with the activated API key", async () => {
     let submittedKey: string | null = null;
+    let submittedBody: any;
     vi.stubGlobal(
       "fetch",
-      createAssetFetchMock(undefined, (init) => {
+      createAssetFetchMock(undefined, (body, init) => {
+        submittedBody = body;
         submittedKey = new Headers(init?.headers).get("x-openai-next-key");
       })
     );
@@ -206,11 +208,14 @@ describe("App", () => {
     render(<App />);
     await activateApiKey();
     fireEvent.click(screen.getByRole("button", { name: "图片生成" }));
+    fireEvent.click(within(screen.getByRole("group", { name: "图片比例" })).getByRole("button", { name: "9:16" }));
+    fireEvent.click(within(screen.getByRole("group", { name: "图片分辨率" })).getByRole("button", { name: /4k/ }));
     fireEvent.click(screen.getByRole("button", { name: /生成图片/ }));
 
     await waitFor(() => {
       expect(submittedKey).toBe(userApiKey);
     });
+    expect(submittedBody.size).toBe("2160x3840");
 
     vi.unstubAllGlobals();
   });
@@ -222,7 +227,10 @@ async function activateApiKey() {
   await screen.findByText("已按当前 Key 隔离任务。");
 }
 
-function createAssetFetchMock(onGenerate?: (body: any, init?: RequestInit) => void, onImageGenerate?: (init?: RequestInit) => void) {
+function createAssetFetchMock(
+  onGenerate?: (body: any, init?: RequestInit) => void,
+  onImageGenerate?: (body: any, init?: RequestInit) => void
+) {
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url === "/api/tasks") {
@@ -260,7 +268,8 @@ function createAssetFetchMock(onGenerate?: (body: any, init?: RequestInit) => vo
       });
     }
     if (url === "/api/images/generate") {
-      onImageGenerate?.(init);
+      const body = JSON.parse(String(init?.body));
+      onImageGenerate?.(body, init);
       return jsonResponse({
         images: [{ url: "https://example.com/generated.png" }]
       });

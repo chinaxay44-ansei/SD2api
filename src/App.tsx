@@ -669,29 +669,6 @@ export default function App() {
             />
           </label>
 
-          <div className="asset-dropzone">
-            <input
-              ref={imageFileInputRef}
-              type="file"
-              multiple
-              accept="image/*"
-              onChange={(event) => void handleImageFiles(event.currentTarget.files)}
-            />
-            <Upload size={20} />
-            <div>
-              <strong>参考图片</strong>
-              <span>最多 4 张，上传后作为 image 数组传给图片生成接口。</span>
-            </div>
-          </div>
-
-          <AssetList
-            assets={imageAssets}
-            emptyText="还没有参考图片。纯文生图可以不上传。"
-            onPreview={setPreviewAsset}
-            onRemove={(id) => setImageAssets((current) => current.filter((asset) => asset.id !== id))}
-            onReorder={(draggedId, targetId) => setImageAssets((current) => reorderAssets(current, draggedId, targetId))}
-          />
-
           <div className="settings-grid">
             <label className="field">
               <span>尺寸</span>
@@ -741,6 +718,36 @@ export default function App() {
         </form>
 
         <section className="results-column">
+          <div className="panel assets-panel">
+            <div className="panel-heading compact">
+              <h2>参考图片</h2>
+              <span className="asset-counter">{imageAssets.length} / 4</span>
+            </div>
+
+            <div className="asset-dropzone">
+              <input
+                ref={imageFileInputRef}
+                type="file"
+                multiple
+                accept="image/*"
+                onChange={(event) => void handleImageFiles(event.currentTarget.files)}
+              />
+              <Upload size={20} />
+              <div>
+                <strong>上传参考图</strong>
+                <span>最多 4 张，点击方格可预览，拖动可调整顺序。</span>
+              </div>
+            </div>
+
+            <AssetList
+              assets={imageAssets}
+              emptyText="还没有参考图片。纯文生图可以不上传。"
+              onPreview={setPreviewAsset}
+              onRemove={(id) => setImageAssets((current) => current.filter((asset) => asset.id !== id))}
+              onReorder={(draggedId, targetId) => setImageAssets((current) => reorderAssets(current, draggedId, targetId))}
+            />
+          </div>
+
           <div className="panel status-panel">
             <div className="panel-heading">
               <div>

@@ -68,6 +68,12 @@ describe("App", () => {
     expect(screen.getByLabelText("图片提示词")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /生成图片/ })).toBeInTheDocument();
     expect(screen.getByText("参考图片")).toBeInTheDocument();
+    expect(
+      Array.from(container.querySelectorAll('[aria-label="图片生成工作台"] .panel-heading h2')).map((heading) =>
+        heading.textContent?.trim()
+      )
+    ).toEqual(["图片设置", "参考图片", "生成结果", "请求摘要"]);
+    expect(container.querySelector(".results-column .panel:first-child h2")).toHaveTextContent("参考图片");
     expect(container.textContent).not.toContain("sk-");
     expect(container.textContent).not.toContain("SecretKey");
     expect(container.textContent).not.toContain("AKID");

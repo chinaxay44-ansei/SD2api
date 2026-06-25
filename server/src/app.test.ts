@@ -16,6 +16,14 @@ function createServices(overrides: Partial<AppServices> = {}): AppServices {
     createTask: vi.fn(),
     getRemoteTask: vi.fn(),
     archiveOutput: vi.fn(),
+    archiveImage: vi.fn(async (_taskId, image, index) => ({
+      revisedPrompt: image.revisedPrompt,
+      sourceUrl: image.url,
+      cosKey: `outputs/image-${index + 1}.png`,
+      cosUrl: `https://cos.example/outputs/image-${index + 1}.png`,
+      mimeType: "image/png",
+      size: 1024
+    })),
     generateImage: vi.fn(),
     taskStore: {
       list: vi.fn(async (ownerHash: string) =>
@@ -130,11 +138,20 @@ describe("createApp", () => {
     expect(response.body.errors).toContain("参考图片最多 4 张。");
   });
 
-  it("returns generated image results from the image generation endpoint", async () => {
+  it("archives generated image results to COS and stores an image task", async () => {
     const generateImage = vi.fn(async () => ({
       images: [{ url: "https://example.com/generated.png", revisedPrompt: "生成一张产品海报" }]
     }));
-    const app = createApp(createServices({ generateImage } as any));
+    const archiveImage = vi.fn(async (taskId: string, image: any, index: number) => ({
+      revisedPrompt: image.revisedPrompt,
+      sourceUrl: image.url,
+      cosKey: `outputs/${taskId}-${index + 1}.png`,
+      cosUrl: `https://cos.example/outputs/${taskId}-${index + 1}.png`,
+      mimeType: "image/png",
+      size: 2048
+    }));
+    const services = createServices({ generateImage, archiveImage } as any);
+    const app = createApp(services);
 
     const response = await request(app)
       .post("/api/images/generate")
@@ -159,9 +176,31 @@ describe("createApp", () => {
       },
       userApiKey
     );
-    expect(response.body.images).toEqual([
-      { url: "https://example.com/generated.png", revisedPrompt: "生成一张产品海报" }
-    ]);
+    expect(archiveImage).toHaveBeenCalledWith(expect.stringMatching(/^image-/), {
+      url: "https://example.com/generated.png",
+      revisedPrompt: "生成一张产品海报"
+    }, 0);
+    expect(response.body.task).toMatchObject({
+      taskType: "image",
+      model: "gpt-image-2",
+      prompt: "生成一张产品海报",
+      status: "succeeded",
+      userKeyHash,
+      outputImages: [
+        expect.objectContaining({
+          cosUrl: expect.stringContaining("https://cos.example/outputs/image-"),
+          sourceUrl: "https://example.com/generated.png"
+        })
+      ]
+    });
+    expect(response.body.images[0].cosUrl).toContain("https://cos.example/outputs/image-");
+    expect(services.taskStore.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskType: "image",
+        status: "succeeded",
+        outputImages: expect.any(Array)
+      })
+    );
   });
 
   it("accepts documented high-resolution GPT image sizes", async () => {

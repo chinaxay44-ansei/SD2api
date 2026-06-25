@@ -99,6 +99,70 @@ describe("SupabaseTaskStore", () => {
     });
   });
 
+  it("packs image task outputs into the existing request json column", async () => {
+    const imageTask: TaskRecord = {
+      id: "image-task-a",
+      taskType: "image",
+      model: "gpt-image-2",
+      prompt: "A product poster.",
+      status: "succeeded",
+      userKeyHash: "owner-a",
+      createdAt: "2026-06-25T01:00:00.000Z",
+      updatedAt: "2026-06-25T01:00:05.000Z",
+      request: {
+        model: "gpt-image-2",
+        prompt: "A product poster.",
+        assets: [],
+        n: 1,
+        size: "2160x3840",
+        responseFormat: "url"
+      },
+      outputImages: [
+        {
+          sourceUrl: "https://platform.example/image.png",
+          cosKey: "outputs/image-task-a-1.png",
+          cosUrl: "https://cos.example/image-task-a-1.png",
+          mimeType: "image/png",
+          size: 2048
+        }
+      ]
+    };
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      const row = JSON.parse(String(init?.body));
+      return jsonResponse([row]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const store = new SupabaseTaskStore({
+      url: "https://project.supabase.co",
+      serviceRoleKey: "service-role-key",
+      table: "generation_tasks"
+    });
+
+    await expect(store.upsert(imageTask)).resolves.toMatchObject({
+      id: "image-task-a",
+      taskType: "image",
+      outputImages: [
+        {
+          cosUrl: "https://cos.example/image-task-a-1.png"
+        }
+      ]
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(init.body)).request).toMatchObject({
+      taskType: "image",
+      imageRequest: {
+        size: "2160x3840"
+      },
+      outputImages: [
+        {
+          cosKey: "outputs/image-task-a-1.png",
+          cosUrl: "https://cos.example/image-task-a-1.png"
+        }
+      ]
+    });
+  });
+
   it("reports Supabase response errors with endpoint context", async () => {
     vi.stubGlobal(
       "fetch",

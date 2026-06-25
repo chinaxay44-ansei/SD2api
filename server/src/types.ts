@@ -49,19 +49,23 @@ export type TaskStatus =
   | "cancelled"
   | "expired";
 
+export type TaskType = "video" | "image";
+
 export interface TaskRecord {
   id: string;
+  taskType?: TaskType;
   model: string;
   prompt: string;
   status: TaskStatus;
   userKeyHash: string;
   createdAt: string;
   updatedAt: string;
-  request?: GenerateRequest;
+  request?: GenerateRequest | ImageGenerateRequest;
   videoUrl?: string;
   lastFrameUrl?: string;
   cosVideoKey?: string;
   cosVideoUrl?: string;
+  outputImages?: ArchivedGeneratedImage[];
   errorMessage?: string;
 }
 
@@ -159,6 +163,14 @@ export interface GeneratedImage {
   url?: string;
   b64Json?: string;
   revisedPrompt?: string;
+}
+
+export interface ArchivedGeneratedImage extends GeneratedImage {
+  sourceUrl?: string;
+  cosKey: string;
+  cosUrl: string;
+  mimeType: string;
+  size: number;
 }
 
 export interface GptImageResult {

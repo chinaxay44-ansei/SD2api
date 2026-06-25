@@ -6,6 +6,7 @@ export type SeedanceModel =
 export type Resolution = "480p" | "720p" | "1080p" | "4k";
 export type AspectRatio = "adaptive" | "16:9" | "9:16" | "1:1" | "4:3" | "3:4" | "21:9";
 export type TaskStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled" | "expired";
+export type TaskType = "video" | "image";
 
 export interface AssetRecord {
   id: string;
@@ -20,6 +21,7 @@ export interface AssetRecord {
 
 export interface TaskRecord {
   id: string;
+  taskType?: TaskType;
   model: string;
   prompt: string;
   status: TaskStatus;
@@ -30,6 +32,7 @@ export interface TaskRecord {
   lastFrameUrl?: string;
   cosVideoKey?: string;
   cosVideoUrl?: string;
+  outputImages?: GeneratedImage[];
   errorMessage?: string;
 }
 
@@ -50,4 +53,9 @@ export interface GeneratedImage {
   url?: string;
   b64Json?: string;
   revisedPrompt?: string;
+  sourceUrl?: string;
+  cosKey?: string;
+  cosUrl?: string;
+  mimeType?: string;
+  size?: number;
 }

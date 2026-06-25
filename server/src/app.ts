@@ -1,10 +1,13 @@
 import express from "express";
 import multer from "multer";
+import { randomUUID } from "node:crypto";
 import { hashOpenAiNextApiKey, readOpenAiNextApiKey } from "./apiKeyAuth.js";
 import { config } from "./config.js";
 import { buildSeedancePayload, validateGenerateRequest } from "./seedance.js";
 import type {
   ArchiveResult,
+  ArchivedGeneratedImage,
+  GeneratedImage,
   GptImageRequest,
   GptImageResult,
   GenerateRequest,
@@ -20,6 +23,7 @@ export interface AppServices {
   createTask(payload: SeedancePayload, apiKey: string): Promise<{ id: string }>;
   getRemoteTask(id: string, apiKey: string): Promise<SeedanceTaskResponse>;
   archiveOutput(taskId: string, videoUrl: string): Promise<ArchiveResult>;
+  archiveImage(taskId: string, image: GeneratedImage, index: number): Promise<ArchivedGeneratedImage>;
   generateImage(payload: GptImageRequest, apiKey: string): Promise<GptImageResult>;
   taskStore: TaskStore;
 }
@@ -116,7 +120,26 @@ export function createApp(services: AppServices): express.Express {
       }
 
       const result = await services.generateImage(buildGptImagePayload(imageRequest), identity.apiKey);
-      response.json(result);
+      const now = new Date().toISOString();
+      const taskId = `image-${randomUUID()}`;
+      const outputImages = await Promise.all(
+        result.images.map((image, index) => services.archiveImage(taskId, image, index))
+      );
+      const task: TaskRecord = {
+        id: taskId,
+        taskType: "image",
+        model: imageRequest.model,
+        prompt: imageRequest.prompt.trim(),
+        status: "succeeded",
+        userKeyHash: identity.userKeyHash,
+        createdAt: now,
+        updatedAt: now,
+        request: imageRequest,
+        outputImages
+      };
+
+      await services.taskStore.upsert(task);
+      response.json({ task, images: outputImages });
     } catch (error) {
       next(error);
     }

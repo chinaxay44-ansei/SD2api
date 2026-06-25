@@ -1,5 +1,5 @@
 import type { TaskStore } from "./taskStore.js";
-import type { TaskRecord, TaskStatus } from "./types.js";
+import type { ArchivedGeneratedImage, ImageGenerateRequest, TaskRecord, TaskStatus } from "./types.js";
 
 export interface SupabaseTaskStoreOptions {
   url: string;
@@ -15,12 +15,18 @@ type SupabaseTaskRow = {
   user_key_hash: string;
   created_at: string;
   updated_at: string;
-  request?: TaskRecord["request"] | null;
+  request?: StoredTaskPayload | TaskRecord["request"] | null;
   video_url?: string | null;
   last_frame_url?: string | null;
   cos_video_key?: string | null;
   cos_video_url?: string | null;
   error_message?: string | null;
+};
+
+type StoredTaskPayload = {
+  taskType: "image";
+  imageRequest?: ImageGenerateRequest | null;
+  outputImages?: ArchivedGeneratedImage[];
 };
 
 export class SupabaseTaskStore implements TaskStore {
@@ -97,7 +103,7 @@ function toRow(task: TaskRecord): SupabaseTaskRow {
     user_key_hash: task.userKeyHash,
     created_at: task.createdAt,
     updated_at: task.updatedAt,
-    request: task.request ?? null,
+    request: packRequest(task),
     video_url: task.videoUrl ?? null,
     last_frame_url: task.lastFrameUrl ?? null,
     cos_video_key: task.cosVideoKey ?? null,
@@ -107,21 +113,60 @@ function toRow(task: TaskRecord): SupabaseTaskRow {
 }
 
 function fromRow(row: SupabaseTaskRow): TaskRecord {
+  const unpacked = unpackRequest(row.request);
   return {
     id: row.id,
+    taskType: unpacked.taskType,
     model: row.model,
     prompt: row.prompt,
     status: row.status,
     userKeyHash: row.user_key_hash,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    request: row.request ?? undefined,
+    request: unpacked.request,
     videoUrl: row.video_url ?? undefined,
     lastFrameUrl: row.last_frame_url ?? undefined,
     cosVideoKey: row.cos_video_key ?? undefined,
     cosVideoUrl: row.cos_video_url ?? undefined,
+    outputImages: unpacked.outputImages,
     errorMessage: row.error_message ?? undefined
   };
+}
+
+function packRequest(task: TaskRecord): StoredTaskPayload | TaskRecord["request"] | null {
+  if (task.taskType === "image") {
+    return {
+      taskType: "image",
+      imageRequest: isImageGenerateRequest(task.request) ? task.request : null,
+      outputImages: task.outputImages ?? []
+    };
+  }
+
+  return task.request ?? null;
+}
+
+function unpackRequest(
+  request: SupabaseTaskRow["request"]
+): { taskType?: "image"; request?: TaskRecord["request"]; outputImages?: ArchivedGeneratedImage[] } {
+  if (isStoredImagePayload(request)) {
+    return {
+      taskType: "image",
+      request: request.imageRequest ?? undefined,
+      outputImages: Array.isArray(request.outputImages) ? request.outputImages : []
+    };
+  }
+
+  return {
+    request: request ?? undefined
+  };
+}
+
+function isStoredImagePayload(value: unknown): value is StoredTaskPayload {
+  return typeof value === "object" && value !== null && "taskType" in value && value.taskType === "image";
+}
+
+function isImageGenerateRequest(value: unknown): value is ImageGenerateRequest {
+  return typeof value === "object" && value !== null && "model" in value && value.model === "gpt-image-2";
 }
 
 async function safeJson(response: Response): Promise<unknown> {

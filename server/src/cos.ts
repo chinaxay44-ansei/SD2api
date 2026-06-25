@@ -3,7 +3,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Express } from "express";
 import { config } from "./config.js";
-import type { ArchiveResult, AssetRecord, MediaKind } from "./types.js";
+import type { ArchiveResult, ArchivedGeneratedImage, AssetRecord, GeneratedImage, MediaKind } from "./types.js";
 
 const require = createRequire(import.meta.url);
 const COS: any = require("cos-nodejs-sdk-v5");
@@ -62,6 +62,30 @@ export async function archiveOutputVideo(taskId: string, videoUrl: string): Prom
   return { key, signedUrl };
 }
 
+export async function archiveGeneratedImage(
+  taskId: string,
+  image: GeneratedImage,
+  index: number
+): Promise<ArchivedGeneratedImage> {
+  const source = await readGeneratedImage(image);
+  const extension = extensionFromMime(source.contentType);
+  const key = buildObjectKey("outputs", `${taskId}-${index + 1}.${extension}`);
+  const signedUrl = await uploadBuffer({
+    key,
+    body: source.buffer,
+    contentType: source.contentType
+  });
+
+  return {
+    revisedPrompt: image.revisedPrompt,
+    sourceUrl: image.url,
+    cosKey: key,
+    cosUrl: signedUrl,
+    mimeType: source.contentType,
+    size: source.buffer.byteLength
+  };
+}
+
 export function mediaKindFromMime(mimeType: string): MediaKind | null {
   return mimeToKind.find(([pattern]) => pattern.test(mimeType))?.[1] ?? null;
 }
@@ -79,6 +103,44 @@ function sanitizeFilename(filename: string): string {
   const extension = path.extname(filename).toLowerCase();
   const stem = path.basename(filename, extension).replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "");
   return `${stem || "asset"}${extension || ""}`;
+}
+
+async function readGeneratedImage(image: GeneratedImage): Promise<{ buffer: Buffer; contentType: string }> {
+  if (image.url) {
+    const response = await fetch(image.url);
+    if (!response.ok) {
+      throw new Error(`下载平台图片失败：${response.status} ${response.statusText}`);
+    }
+
+    const contentType = normalizeImageContentType(response.headers.get("content-type"));
+    return {
+      buffer: Buffer.from(await response.arrayBuffer()),
+      contentType
+    };
+  }
+
+  if (image.b64Json) {
+    const normalized = image.b64Json.includes(",") ? image.b64Json.split(",").pop() ?? "" : image.b64Json;
+    return {
+      buffer: Buffer.from(normalized, "base64"),
+      contentType: "image/png"
+    };
+  }
+
+  throw new Error("图片生成响应缺少可归档的图片内容。");
+}
+
+function normalizeImageContentType(contentType: string | null): string {
+  const value = contentType?.split(";")[0]?.trim().toLowerCase();
+  if (value?.startsWith("image/")) return value;
+  return "image/png";
+}
+
+function extensionFromMime(mimeType: string): string {
+  if (mimeType === "image/jpeg" || mimeType === "image/jpg") return "jpg";
+  if (mimeType === "image/webp") return "webp";
+  if (mimeType === "image/gif") return "gif";
+  return "png";
 }
 
 async function uploadBuffer(input: {

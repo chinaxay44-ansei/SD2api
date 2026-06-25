@@ -118,6 +118,7 @@ export default function App() {
   const [assets, setAssets] = useState<AssetRecord[]>([]);
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
   const [activeTask, setActiveTask] = useState<TaskRecord | null>(null);
+  const [activeImageTask, setActiveImageTask] = useState<TaskRecord | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [message, setMessage] = useState<string>("");
@@ -141,6 +142,8 @@ export default function App() {
   const activeMode = modeOptions.find((option) => option.id === mode) ?? modeOptions[0];
   const previewUrl = activeTask?.cosVideoUrl ?? activeTask?.videoUrl;
   const canPoll = activeTask?.status === "queued" || activeTask?.status === "running";
+  const videoTasks = tasks.filter((task) => (task.taskType ?? "video") === "video");
+  const imageTasks = tasks.filter((task) => task.taskType === "image");
   const imageCount = assets.filter((asset) => asset.kind === "image").length;
   const videoCount = assets.filter((asset) => asset.kind === "video").length;
   const audioCount = assets.filter((asset) => asset.kind === "audio").length;
@@ -172,6 +175,7 @@ export default function App() {
     if (!requestApiKey) {
       setTasks([]);
       setActiveTask(null);
+      setActiveImageTask(null);
       return;
     }
 
@@ -249,6 +253,7 @@ export default function App() {
     setApiKey(nextApiKey);
     setTasks([]);
     setActiveTask(null);
+    setActiveImageTask(null);
     setError("");
     setImageError("");
     setMessage("");
@@ -370,7 +375,7 @@ export default function App() {
     setImageMessage("正在提交图片生成请求。");
 
     try {
-      const data = await fetchJson<{ images: GeneratedImage[] }>("/api/images/generate", withOpenAiNextKey({
+      const data = await fetchJson<{ task: TaskRecord; images: GeneratedImage[] }>("/api/images/generate", withOpenAiNextKey({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -382,8 +387,11 @@ export default function App() {
           responseFormat: imageResponseFormat
         })
       }, apiKey));
-      setGeneratedImages(data.images);
-      setImageMessage(`已生成 ${data.images.length} 张图片。`);
+      const savedImages = data.task.outputImages ?? data.images;
+      setActiveImageTask(data.task);
+      setGeneratedImages(savedImages);
+      setTasks((current) => mergeTask(current, data.task));
+      setImageMessage(`已生成并保存 ${savedImages.length} 张图片到 COS。`);
     } catch (generateError) {
       setImageError(errorMessage(generateError));
     } finally {
@@ -417,6 +425,13 @@ export default function App() {
     if (!source) return;
     await navigator.clipboard.writeText(source);
     setImageMessage("图片链接已复制。");
+  }
+
+  function selectImageTask(task: TaskRecord) {
+    setActiveImageTask(task);
+    setGeneratedImages(task.outputImages ?? []);
+    setImageMessage("已载入已保存的图片任务。");
+    setImageError("");
   }
 
   return (
@@ -667,7 +682,7 @@ export default function App() {
                 <RefreshCw size={17} />
               </button>
             </div>
-            <TaskHistory tasks={tasks} activeId={activeTask?.id} onSelect={setActiveTask} />
+            <TaskHistory tasks={videoTasks} activeId={activeTask?.id} onSelect={setActiveTask} emptyText="暂无视频任务" />
           </div>
         </section>
       </section>
@@ -816,7 +831,11 @@ export default function App() {
             <div className="panel-heading">
               <div>
                 <h2>生成结果</h2>
-                <p>{generatedImages.length > 0 ? `${generatedImages.length} 张图片已返回` : "提交后在这里预览图片。"}</p>
+                <p>
+                  {generatedImages.length > 0
+                    ? `${generatedImages.length} 张图片已保存到 COS`
+                    : "提交后在这里预览 COS 保存结果。"}
+                </p>
               </div>
             </div>
 
@@ -832,22 +851,14 @@ export default function App() {
 
           <div className="panel history-panel">
             <div className="panel-heading compact">
-              <h2>请求摘要</h2>
+              <h2>最近图片任务</h2>
             </div>
-            <div className="request-summary">
-              <div>
-                <span>模型</span>
-                <strong>gpt-image-2</strong>
-              </div>
-              <div>
-                <span>参考图</span>
-                <strong>{imageAssets.length} / 4</strong>
-              </div>
-              <div>
-                <span>返回</span>
-                <strong>{imageResponseFormat}</strong>
-              </div>
-            </div>
+            <TaskHistory
+              tasks={imageTasks}
+              activeId={activeImageTask?.id}
+              onSelect={selectImageTask}
+              emptyText="暂无图片任务"
+            />
           </div>
         </section>
       </section>
@@ -1120,9 +1131,9 @@ function StatusTimeline(props: { status?: TaskStatus }) {
   );
 }
 
-function TaskHistory(props: { tasks: TaskRecord[]; activeId?: string; onSelect(task: TaskRecord): void }) {
+function TaskHistory(props: { tasks: TaskRecord[]; activeId?: string; emptyText?: string; onSelect(task: TaskRecord): void }) {
   if (props.tasks.length === 0) {
-    return <div className="empty-history">暂无任务历史</div>;
+    return <div className="empty-history">{props.emptyText ?? "暂无任务历史"}</div>;
   }
 
   return (
@@ -1137,13 +1148,21 @@ function TaskHistory(props: { tasks: TaskRecord[]; activeId?: string; onSelect(t
           <span className={`status-dot ${task.status}`} />
           <span className="task-main">
             <strong>{truncate(task.prompt || task.id, 34)}</strong>
-            <small>{task.model.includes("fast") ? "Fast" : "Standard"} · {new Date(task.updatedAt).toLocaleString()}</small>
+            <small>{taskHistoryMeta(task)}</small>
           </span>
           <span className="task-status">{statusLabels[task.status] ?? task.status}</span>
         </button>
       ))}
     </div>
   );
+}
+
+function taskHistoryMeta(task: TaskRecord): string {
+  const updatedAt = new Date(task.updatedAt).toLocaleString();
+  if (task.taskType === "image") {
+    return `图片 · ${task.outputImages?.length ?? 0} 张 · ${updatedAt}`;
+  }
+  return `${task.model.includes("fast") ? "Fast" : "Standard"} · ${updatedAt}`;
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -1197,6 +1216,7 @@ function errorMessage(error: unknown): string {
 }
 
 function generatedImageSource(image: GeneratedImage): string | undefined {
+  if (image.cosUrl) return image.cosUrl;
   if (image.url) return image.url;
   if (image.b64Json) return `data:image/png;base64,${image.b64Json}`;
   return undefined;

@@ -72,7 +72,7 @@ describe("App", () => {
       Array.from(container.querySelectorAll('[aria-label="图片生成工作台"] .panel-heading h2')).map((heading) =>
         heading.textContent?.trim()
       )
-    ).toEqual(["图片设置", "参考图片", "生成结果", "请求摘要"]);
+    ).toEqual(["图片设置", "参考图片", "生成结果", "最近图片任务"]);
     expect(container.querySelector(".results-column .panel:first-child h2")).toHaveTextContent("参考图片");
     expect(container.textContent).not.toContain("sk-");
     expect(container.textContent).not.toContain("SecretKey");
@@ -216,6 +216,8 @@ describe("App", () => {
       expect(submittedKey).toBe(userApiKey);
     });
     expect(submittedBody.size).toBe("2160x3840");
+    expect(await screen.findByText("已生成并保存 1 张图片到 COS。")).toBeInTheDocument();
+    expect(screen.getByText(/图片 · 1 张/)).toBeInTheDocument();
 
     vi.unstubAllGlobals();
   });
@@ -271,7 +273,33 @@ function createAssetFetchMock(
       const body = JSON.parse(String(init?.body));
       onImageGenerate?.(body, init);
       return jsonResponse({
-        images: [{ url: "https://example.com/generated.png" }]
+        task: {
+          id: "image-task-1",
+          taskType: "image",
+          model: "gpt-image-2",
+          prompt: body.prompt,
+          status: "succeeded",
+          createdAt: "2026-06-24T00:00:00.000Z",
+          updatedAt: "2026-06-24T00:00:00.000Z",
+          outputImages: [
+            {
+              cosKey: "outputs/image-task-1-1.png",
+              cosUrl: "https://cos.example/outputs/image-task-1-1.png",
+              sourceUrl: "https://example.com/generated.png",
+              mimeType: "image/png",
+              size: 1024
+            }
+          ]
+        },
+        images: [
+          {
+            cosKey: "outputs/image-task-1-1.png",
+            cosUrl: "https://cos.example/outputs/image-task-1-1.png",
+            sourceUrl: "https://example.com/generated.png",
+            mimeType: "image/png",
+            size: 1024
+          }
+        ]
       });
     }
     return jsonResponse({});

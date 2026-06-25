@@ -1168,11 +1168,20 @@ function taskHistoryMeta(task: TaskRecord): string {
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
   const text = await response.text();
-  const data = text ? JSON.parse(text) : {};
+  const data = parseResponseBody(text);
   if (!response.ok) {
     throw new Error(data?.error ?? data?.errors?.[0] ?? `${response.status} ${response.statusText}`);
   }
   return data as T;
+}
+
+function parseResponseBody(text: string): any {
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { error: text.trim() || "响应不是有效 JSON。" };
+  }
 }
 
 function withOpenAiNextKey(init: RequestInit | undefined, apiKey: string): RequestInit {

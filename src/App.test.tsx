@@ -221,6 +221,34 @@ describe("App", () => {
 
     vi.unstubAllGlobals();
   });
+
+  it("shows plain text API errors without JSON parse failures", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === "/api/tasks") return jsonResponse({ tasks: [] });
+        if (url === "/api/images/generate") {
+          return new Response("An error occurred with your deployment\n\nFUNCTION_INVOCATION_TIMEOUT", {
+            status: 504,
+            statusText: "Gateway Timeout",
+            headers: { "content-type": "text/plain; charset=utf-8" }
+          });
+        }
+        return jsonResponse({});
+      })
+    );
+
+    render(<App />);
+    await activateApiKey();
+    fireEvent.click(screen.getByRole("button", { name: "图片生成" }));
+    fireEvent.click(screen.getByRole("button", { name: /生成图片/ }));
+
+    expect(await screen.findByText(/FUNCTION_INVOCATION_TIMEOUT/)).toBeInTheDocument();
+    expect(screen.queryByText(/Unexpected token/)).not.toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
 });
 
 async function activateApiKey() {

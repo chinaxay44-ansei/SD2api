@@ -180,7 +180,7 @@ export function createApp(services: AppServices): express.Express {
       }
 
       const existing = await services.taskStore.get(id, identity.userKeyHash);
-      const result = await syncRemoteVideoTask(services, id, identity, existing, { archiveSucceededOutput: false });
+      const result = await syncRemoteVideoTask(services, id, identity, existing);
       response.json(result);
     } catch (error) {
       next(error);
@@ -287,23 +287,13 @@ async function syncRemoteVideoTask(
   services: AppServices,
   id: string,
   identity: { apiKey: string; userKeyHash: string },
-  existing?: TaskRecord,
-  options: { archiveSucceededOutput?: boolean } = {}
+  existing?: TaskRecord
 ): Promise<{ task: TaskRecord; remote: SeedanceTaskResponse }> {
   const remote = await services.getRemoteTask(id, identity.apiKey);
   const now = new Date().toISOString();
   const status = normalizeRemoteStatus(remote.status);
   const videoUrl = remote.content?.video_url ?? existing?.videoUrl;
   const lastFrameUrl = remote.content?.last_frame_url ?? existing?.lastFrameUrl;
-  let cosVideoKey = existing?.cosVideoKey;
-  let cosVideoUrl = existing?.cosVideoUrl;
-
-  if (options.archiveSucceededOutput !== false && status === "succeeded" && videoUrl && !cosVideoUrl) {
-    const archive = await services.archiveOutput(id, videoUrl);
-    cosVideoKey = archive.key;
-    cosVideoUrl = archive.signedUrl;
-  }
-
   const task: TaskRecord = {
     id,
     taskType: existing?.taskType ?? "video",
@@ -316,8 +306,8 @@ async function syncRemoteVideoTask(
     updatedAt: now,
     videoUrl,
     lastFrameUrl,
-    cosVideoKey,
-    cosVideoUrl,
+    cosVideoKey: undefined,
+    cosVideoUrl: undefined,
     errorMessage: remote.error?.message
   };
 

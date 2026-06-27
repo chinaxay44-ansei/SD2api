@@ -140,7 +140,7 @@ export default function App() {
   const [pendingImageGenerations, setPendingImageGenerations] = useState(0);
   const imageFileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const previewUrl = activeTask?.cosVideoUrl ?? activeTask?.videoUrl;
+  const previewUrl = activeTask?.videoUrl ?? activeTask?.cosVideoUrl;
   const isGenerating = pendingVideoGenerations > 0;
   const isImageGenerating = pendingImageGenerations > 0;
   const videoTasks = tasks.filter((task) => (task.taskType ?? "video") === "video");
@@ -386,7 +386,7 @@ export default function App() {
       }, apiKey));
       setActiveTask(data.task);
       setTasks((current) => mergeTask(current, data.task));
-      setMessage("任务已创建，系统会自动轮询并在成功后保存输出到 COS。");
+      setMessage("任务已创建，系统会自动轮询并在成功后显示平台临时视频链接。");
     } catch (generateError) {
       setError(errorMessage(generateError));
     } finally {
@@ -1170,7 +1170,7 @@ function StatusTimeline(props: { status?: TaskStatus }) {
   const steps: Array<{ id: TaskStatus; label: string }> = [
     { id: "queued", label: "排队" },
     { id: "running", label: "生成" },
-    { id: "succeeded", label: "保存" }
+    { id: "succeeded", label: "完成" }
   ];
   const activeIndex = props.status === "running" ? 1 : props.status === "succeeded" ? 2 : 0;
 
@@ -1230,7 +1230,7 @@ function isImageTask(task: TaskRecord): boolean {
 
 function shouldResumeVideoTask(task: TaskRecord): boolean {
   if (!isVideoTask(task)) return false;
-  return task.status === "queued" || task.status === "running" || (task.status === "succeeded" && Boolean(task.videoUrl) && !task.cosVideoUrl);
+  return task.status === "queued" || task.status === "running";
 }
 
 function selectRestoredVideoTask(tasks: TaskRecord[], currentId?: string): TaskRecord | null {

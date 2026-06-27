@@ -200,7 +200,6 @@ describe("App", () => {
             prompt: "上次未完成的视频任务",
             status: "succeeded",
             videoUrl: "https://platform.example/resume.mp4",
-            cosVideoUrl: "https://cos.example/resume.mp4",
             createdAt: "2026-06-25T00:00:00.000Z",
             updatedAt: "2026-06-25T00:01:00.000Z"
           }
@@ -218,9 +217,43 @@ describe("App", () => {
     });
     expect(await screen.findByText(/已恢复 1 个未完成视频任务/)).toBeInTheDocument();
     const videoPreview = container.querySelector(".video-stage video");
-    expect(videoPreview).toHaveAttribute("src", "https://cos.example/resume.mp4");
+    expect(videoPreview).toHaveAttribute("src", "https://platform.example/resume.mp4");
     expect(videoPreview).not.toHaveAttribute("autoplay");
     expect(videoPreview).toHaveAttribute("preload", "metadata");
+
+    vi.unstubAllGlobals();
+  });
+
+  it("does not keep polling succeeded Seedance tasks just because they lack COS URLs", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/tasks") {
+        return jsonResponse({
+          tasks: [
+            {
+              id: "seedance-done-temp-url",
+              taskType: "video",
+              model: "doubao-seedance-2-0-260128",
+              prompt: "已完成的平台临时视频",
+              status: "succeeded",
+              videoUrl: "https://platform.example/done.mp4",
+              createdAt: "2026-06-25T00:00:00.000Z",
+              updatedAt: "2026-06-25T00:01:00.000Z"
+            }
+          ]
+        });
+      }
+      return jsonResponse({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+    await activateApiKey();
+
+    await screen.findByText(/已完成的平台临时视频/);
+    await waitFor(() => {
+      expect(fetchMock).not.toHaveBeenCalledWith("/api/tasks/seedance-done-temp-url", expect.anything());
+    });
 
     vi.unstubAllGlobals();
   });
@@ -316,7 +349,6 @@ describe("App", () => {
             prompt: "刷新状态测试",
             status: "succeeded",
             videoUrl: "https://platform.example/task-refresh.mp4",
-            cosVideoUrl: "https://cos.example/task-refresh.mp4",
             createdAt: "2026-06-25T00:00:00.000Z",
             updatedAt: "2026-06-25T00:01:00.000Z"
           }

@@ -324,7 +324,7 @@ describe("createApp", () => {
     expect(createTask).toHaveBeenCalledWith(expect.any(Object), userApiKey);
   });
 
-  it("archives a succeeded remote video result to COS once", async () => {
+  it("stores a succeeded remote platform video URL without archiving to COS", async () => {
     const existing: TaskRecord = {
       id: "seedance-task-2",
       model: "doubao-seedance-2-0-260128",
@@ -342,10 +342,7 @@ describe("createApp", () => {
         content: { video_url: "https://platform.example/out.mp4" },
         error: null
       })),
-      archiveOutput: vi.fn(async () => ({
-        key: "outputs/seedance-task-2.mp4",
-        signedUrl: "https://cos.example/outputs/seedance-task-2.mp4"
-      }))
+      archiveOutput: vi.fn()
     });
     vi.mocked(services.taskStore.get).mockResolvedValue(existing);
     const app = createApp(services);
@@ -354,16 +351,16 @@ describe("createApp", () => {
 
     expect(services.taskStore.get).toHaveBeenCalledWith("seedance-task-2", userKeyHash);
     expect(services.getRemoteTask).toHaveBeenCalledWith("seedance-task-2", userApiKey);
-    expect(services.archiveOutput).toHaveBeenCalledWith("seedance-task-2", "https://platform.example/out.mp4");
+    expect(services.archiveOutput).not.toHaveBeenCalled();
     expect(response.body.task).toMatchObject({
       id: "seedance-task-2",
       status: "succeeded",
-      videoUrl: "https://platform.example/out.mp4",
-      cosVideoUrl: "https://cos.example/outputs/seedance-task-2.mp4"
+      videoUrl: "https://platform.example/out.mp4"
     });
+    expect(response.body.task.cosVideoUrl).toBeUndefined();
   });
 
-  it("archives a stored platform video URL when a refreshed succeeded task is missing a COS URL", async () => {
+  it("keeps a stored platform video URL without archiving when refreshing succeeded tasks", async () => {
     const existing: TaskRecord = {
       id: "seedance-task-stored-url",
       taskType: "video",
@@ -383,10 +380,7 @@ describe("createApp", () => {
         content: {},
         error: null
       })),
-      archiveOutput: vi.fn(async () => ({
-        key: "outputs/seedance-task-stored-url.mp4",
-        signedUrl: "https://cos.example/outputs/seedance-task-stored-url.mp4"
-      }))
+      archiveOutput: vi.fn()
     });
     vi.mocked(services.taskStore.get).mockResolvedValue(existing);
     const app = createApp(services);
@@ -396,14 +390,14 @@ describe("createApp", () => {
       .set("x-openai-next-key", userApiKey)
       .expect(200);
 
-    expect(services.archiveOutput).toHaveBeenCalledWith("seedance-task-stored-url", "https://platform.example/stored.mp4");
+    expect(services.archiveOutput).not.toHaveBeenCalled();
     expect(response.body.task).toMatchObject({
       id: "seedance-task-stored-url",
       taskType: "video",
       status: "succeeded",
-      videoUrl: "https://platform.example/stored.mp4",
-      cosVideoUrl: "https://cos.example/outputs/seedance-task-stored-url.mp4"
+      videoUrl: "https://platform.example/stored.mp4"
     });
+    expect(response.body.task.cosVideoUrl).toBeUndefined();
   });
 
   it("manually queries an untracked succeeded Seedance task without blocking on COS archiving", async () => {

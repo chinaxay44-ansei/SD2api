@@ -180,7 +180,7 @@ export function createApp(services: AppServices): express.Express {
       }
 
       const existing = await services.taskStore.get(id, identity.userKeyHash);
-      const result = await syncRemoteVideoTask(services, id, identity, existing);
+      const result = await syncRemoteVideoTask(services, id, identity, existing, { archiveSucceededOutput: false });
       response.json(result);
     } catch (error) {
       next(error);
@@ -287,7 +287,8 @@ async function syncRemoteVideoTask(
   services: AppServices,
   id: string,
   identity: { apiKey: string; userKeyHash: string },
-  existing?: TaskRecord
+  existing?: TaskRecord,
+  options: { archiveSucceededOutput?: boolean } = {}
 ): Promise<{ task: TaskRecord; remote: SeedanceTaskResponse }> {
   const remote = await services.getRemoteTask(id, identity.apiKey);
   const now = new Date().toISOString();
@@ -297,7 +298,7 @@ async function syncRemoteVideoTask(
   let cosVideoKey = existing?.cosVideoKey;
   let cosVideoUrl = existing?.cosVideoUrl;
 
-  if (status === "succeeded" && videoUrl && !cosVideoUrl) {
+  if (options.archiveSucceededOutput !== false && status === "succeeded" && videoUrl && !cosVideoUrl) {
     const archive = await services.archiveOutput(id, videoUrl);
     cosVideoKey = archive.key;
     cosVideoUrl = archive.signedUrl;

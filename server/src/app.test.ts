@@ -406,7 +406,7 @@ describe("createApp", () => {
     });
   });
 
-  it("manually queries an untracked Seedance task and stores the result for the current API key", async () => {
+  it("manually queries an untracked succeeded Seedance task without blocking on COS archiving", async () => {
     const services = createServices({
       getRemoteTask: vi.fn(async () => ({
         id: "task_manualsuccess",
@@ -415,10 +415,7 @@ describe("createApp", () => {
         content: { video_url: "https://platform.example/manual.mp4" },
         error: null
       })),
-      archiveOutput: vi.fn(async () => ({
-        key: "outputs/task_manualsuccess.mp4",
-        signedUrl: "https://cos.example/outputs/task_manualsuccess.mp4"
-      }))
+      archiveOutput: vi.fn()
     });
     vi.mocked(services.taskStore.get).mockResolvedValue(undefined);
     const app = createApp(services);
@@ -431,7 +428,7 @@ describe("createApp", () => {
 
     expect(services.taskStore.get).toHaveBeenCalledWith("task_manualsuccess", userKeyHash);
     expect(services.getRemoteTask).toHaveBeenCalledWith("task_manualsuccess", userApiKey);
-    expect(services.archiveOutput).toHaveBeenCalledWith("task_manualsuccess", "https://platform.example/manual.mp4");
+    expect(services.archiveOutput).not.toHaveBeenCalled();
     expect(services.taskStore.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         id: "task_manualsuccess",
@@ -440,14 +437,15 @@ describe("createApp", () => {
         status: "succeeded",
         userKeyHash,
         videoUrl: "https://platform.example/manual.mp4",
-        cosVideoUrl: "https://cos.example/outputs/task_manualsuccess.mp4"
+        cosVideoUrl: undefined
       })
     );
     expect(response.body.task).toMatchObject({
       id: "task_manualsuccess",
       status: "succeeded",
-      cosVideoUrl: "https://cos.example/outputs/task_manualsuccess.mp4"
+      videoUrl: "https://platform.example/manual.mp4"
     });
+    expect(response.body.task.cosVideoUrl).toBeUndefined();
   });
 
   it("manually queries a failed Seedance task and stores the remote error message", async () => {

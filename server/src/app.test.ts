@@ -406,6 +406,77 @@ describe("createApp", () => {
     });
   });
 
+  it("manually queries an untracked Seedance task and stores the result for the current API key", async () => {
+    const services = createServices({
+      getRemoteTask: vi.fn(async () => ({
+        id: "task_manualsuccess",
+        model: "doubao-seedance-2-0-260128",
+        status: "succeeded" as const,
+        content: { video_url: "https://platform.example/manual.mp4" },
+        error: null
+      })),
+      archiveOutput: vi.fn(async () => ({
+        key: "outputs/task_manualsuccess.mp4",
+        signedUrl: "https://cos.example/outputs/task_manualsuccess.mp4"
+      }))
+    });
+    vi.mocked(services.taskStore.get).mockResolvedValue(undefined);
+    const app = createApp(services);
+
+    const response = await request(app)
+      .post("/api/tasks/query")
+      .set("x-openai-next-key", userApiKey)
+      .send({ id: "任务 task_manualsuccess" })
+      .expect(200);
+
+    expect(services.taskStore.get).toHaveBeenCalledWith("task_manualsuccess", userKeyHash);
+    expect(services.getRemoteTask).toHaveBeenCalledWith("task_manualsuccess", userApiKey);
+    expect(services.archiveOutput).toHaveBeenCalledWith("task_manualsuccess", "https://platform.example/manual.mp4");
+    expect(services.taskStore.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "task_manualsuccess",
+        taskType: "video",
+        prompt: "手动查询 task_manualsuccess",
+        status: "succeeded",
+        userKeyHash,
+        videoUrl: "https://platform.example/manual.mp4",
+        cosVideoUrl: "https://cos.example/outputs/task_manualsuccess.mp4"
+      })
+    );
+    expect(response.body.task).toMatchObject({
+      id: "task_manualsuccess",
+      status: "succeeded",
+      cosVideoUrl: "https://cos.example/outputs/task_manualsuccess.mp4"
+    });
+  });
+
+  it("manually queries a failed Seedance task and stores the remote error message", async () => {
+    const services = createServices({
+      getRemoteTask: vi.fn(async () => ({
+        id: "task_manualfailed",
+        model: "doubao-seedance-2-0-260128",
+        status: "failed" as const,
+        error: { message: "Height must be between 300px and 6000px." }
+      })),
+      archiveOutput: vi.fn()
+    });
+    vi.mocked(services.taskStore.get).mockResolvedValue(undefined);
+    const app = createApp(services);
+
+    const response = await request(app)
+      .post("/api/tasks/query")
+      .set("x-openai-next-key", userApiKey)
+      .send({ id: "task_manualfailed" })
+      .expect(200);
+
+    expect(services.archiveOutput).not.toHaveBeenCalled();
+    expect(response.body.task).toMatchObject({
+      id: "task_manualfailed",
+      status: "failed",
+      errorMessage: "Height must be between 300px and 6000px."
+    });
+  });
+
   it("normalizes OpenAI Next processing status to running so the frontend keeps polling", async () => {
     const existing: TaskRecord = {
       id: "seedance-task-3",

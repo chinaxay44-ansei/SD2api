@@ -349,6 +349,48 @@ describe("App", () => {
     vi.unstubAllGlobals();
   });
 
+  it("manually queries a Seedance task id and displays the remote failure reason", async () => {
+    let submittedKey: string | null = null;
+    let submittedBody: any;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/tasks") return jsonResponse({ tasks: [] });
+      if (url === "/api/tasks/query") {
+        submittedKey = new Headers(init?.headers).get("x-openai-next-key");
+        submittedBody = JSON.parse(String(init?.body));
+        return jsonResponse({
+          task: {
+            id: "task_manualfailed",
+            taskType: "video",
+            model: "doubao-seedance-2-0-260128",
+            prompt: "手动查询 task_manualfailed",
+            status: "failed",
+            errorMessage: "Height must be between 300px and 6000px.",
+            createdAt: "2026-06-27T00:00:00.000Z",
+            updatedAt: "2026-06-27T00:00:00.000Z"
+          }
+        });
+      }
+      return jsonResponse({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+    await activateApiKey();
+    fireEvent.change(screen.getByLabelText("任务 ID"), { target: { value: "task_manualfailed" } });
+    fireEvent.click(screen.getByRole("button", { name: "查询任务" }));
+
+    await waitFor(() => {
+      expect(submittedBody).toEqual({ id: "task_manualfailed" });
+    });
+    expect(submittedKey).toBe(userApiKey);
+    expect(await screen.findByText("任务 task_manualfailed")).toBeInTheDocument();
+    expect(screen.getByText("Height must be between 300px and 6000px.")).toBeInTheDocument();
+    expect(screen.getByText("手动查询完成：失败。")).toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
+
   it("switches video generation modes without showing helper copy", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ tasks: [] }))));
 

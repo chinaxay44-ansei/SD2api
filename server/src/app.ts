@@ -167,6 +167,26 @@ export function createApp(services: AppServices): express.Express {
     }
   });
 
+  app.post("/api/tasks/query", async (request, response, next) => {
+    try {
+      const identity = requestIdentity(request, response);
+      if (!identity) return;
+
+      const id = normalizeManualTaskId(request.body);
+      const validation = validateManualTaskId(id);
+      if (!validation.ok) {
+        response.status(400).json({ errors: validation.errors });
+        return;
+      }
+
+      const existing = await services.taskStore.get(id, identity.userKeyHash);
+      const result = await syncRemoteVideoTask(services, id, identity, existing);
+      response.json(result);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.get("/api/tasks/:id", async (request, response, next) => {
     try {
       const id = request.params.id;
@@ -178,39 +198,7 @@ export function createApp(services: AppServices): express.Express {
         return;
       }
 
-      const remote = await services.getRemoteTask(id, identity.apiKey);
-      const now = new Date().toISOString();
-      const status = normalizeRemoteStatus(remote.status);
-      const videoUrl = remote.content?.video_url ?? existing?.videoUrl;
-      const lastFrameUrl = remote.content?.last_frame_url;
-      let cosVideoKey = existing?.cosVideoKey;
-      let cosVideoUrl = existing?.cosVideoUrl;
-
-      if (status === "succeeded" && videoUrl && !cosVideoUrl) {
-        const archive = await services.archiveOutput(id, videoUrl);
-        cosVideoKey = archive.key;
-        cosVideoUrl = archive.signedUrl;
-      }
-
-      const task: TaskRecord = {
-        id,
-        taskType: existing?.taskType ?? "video",
-        model: remote.model ?? existing?.model ?? "",
-        prompt: existing?.prompt ?? "",
-        userKeyHash: identity.userKeyHash,
-        request: existing?.request,
-        status,
-        createdAt: existing?.createdAt ?? now,
-        updatedAt: now,
-        videoUrl,
-        lastFrameUrl,
-        cosVideoKey,
-        cosVideoUrl,
-        errorMessage: remote.error?.message
-      };
-
-      await services.taskStore.upsert(task);
-      response.json({ task, remote });
+      response.json(await syncRemoteVideoTask(services, id, identity, existing));
     } catch (error) {
       next(error);
     }
@@ -279,6 +267,63 @@ function normalizeImageGenerateRequest(body: any): ImageGenerateRequest {
   };
 }
 
+function normalizeManualTaskId(body: any): string {
+  const raw = String(body?.id ?? body?.taskId ?? "").trim();
+  const directMatch = raw.match(/task_[A-Za-z0-9]+\b/);
+  if (directMatch) return directMatch[0];
+  const spacedMatch = raw.match(/(?:^|\s)task\s+([A-Za-z0-9]+)(?:\s|$)/i);
+  if (spacedMatch) return `task_${spacedMatch[1]}`;
+  return raw;
+}
+
+function validateManualTaskId(id: string): { ok: true } | { ok: false; errors: string[] } {
+  const errors: string[] = [];
+  if (!id) errors.push("请输入任务 ID。");
+  if (id && !/^task_[A-Za-z0-9]+$/.test(id)) errors.push("任务 ID 格式应为 task_xxx。");
+  return errors.length === 0 ? { ok: true } : { ok: false, errors };
+}
+
+async function syncRemoteVideoTask(
+  services: AppServices,
+  id: string,
+  identity: { apiKey: string; userKeyHash: string },
+  existing?: TaskRecord
+): Promise<{ task: TaskRecord; remote: SeedanceTaskResponse }> {
+  const remote = await services.getRemoteTask(id, identity.apiKey);
+  const now = new Date().toISOString();
+  const status = normalizeRemoteStatus(remote.status);
+  const videoUrl = remote.content?.video_url ?? existing?.videoUrl;
+  const lastFrameUrl = remote.content?.last_frame_url ?? existing?.lastFrameUrl;
+  let cosVideoKey = existing?.cosVideoKey;
+  let cosVideoUrl = existing?.cosVideoUrl;
+
+  if (status === "succeeded" && videoUrl && !cosVideoUrl) {
+    const archive = await services.archiveOutput(id, videoUrl);
+    cosVideoKey = archive.key;
+    cosVideoUrl = archive.signedUrl;
+  }
+
+  const task: TaskRecord = {
+    id,
+    taskType: existing?.taskType ?? "video",
+    model: remote.model ?? existing?.model ?? "",
+    prompt: existing?.prompt || `手动查询 ${id}`,
+    userKeyHash: identity.userKeyHash,
+    request: existing?.request,
+    status,
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+    videoUrl,
+    lastFrameUrl,
+    cosVideoKey,
+    cosVideoUrl,
+    errorMessage: remote.error?.message
+  };
+
+  await services.taskStore.upsert(task);
+  return { task, remote };
+}
+
 function validateImageGenerateRequest(request: ImageGenerateRequest): string[] {
   const errors: string[] = [];
   if (request.model !== "gpt-image-2") errors.push("仅支持 gpt-image-2 模型。");
@@ -312,6 +357,7 @@ function isClientError(message: string): boolean {
     message.includes("仅支持") ||
     message.includes("请选择") ||
     message.includes("缺少") ||
+    message.includes("任务 ID") ||
     message.includes("请输入") ||
     message.includes("不支持") ||
     message.includes("最多")

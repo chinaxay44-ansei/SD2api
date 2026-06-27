@@ -11,6 +11,7 @@ import {
   LoaderCircle,
   Play,
   RefreshCw,
+  Search,
   Trash2,
   Upload,
   WandSparkles
@@ -124,6 +125,8 @@ export default function App() {
   const [error, setError] = useState<string>("");
   const [isUploading, setIsUploading] = useState(false);
   const [pendingVideoGenerations, setPendingVideoGenerations] = useState(0);
+  const [manualTaskId, setManualTaskId] = useState("");
+  const [isManualQuerying, setIsManualQuerying] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [previewAsset, setPreviewAsset] = useState<AssetRecord | null>(null);
   const [imagePrompt, setImagePrompt] = useState(imageSamplePrompt);
@@ -439,6 +442,37 @@ export default function App() {
     }
   }
 
+  async function handleManualTaskQuery() {
+    const taskId = manualTaskId.trim();
+    if (!apiKey) {
+      setError("请先填写并使用 OpenAI Next API Key。");
+      return;
+    }
+    if (!taskId) {
+      setError("请输入任务 ID。");
+      return;
+    }
+
+    setIsManualQuerying(true);
+    setError("");
+    setMessage("正在查询任务状态。");
+
+    try {
+      const data = await fetchJson<{ task: TaskRecord }>("/api/tasks/query", withOpenAiNextKey({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: taskId })
+      }, apiKey));
+      setActiveTask(data.task);
+      setTasks((current) => mergeTask(current, data.task));
+      setMessage(`手动查询完成：${statusLabels[data.task.status] ?? data.task.status}。`);
+    } catch (queryError) {
+      setError(errorMessage(queryError));
+    } finally {
+      setIsManualQuerying(false);
+    }
+  }
+
   async function copyPreviewUrl() {
     if (!previewUrl) return;
     await navigator.clipboard.writeText(previewUrl);
@@ -652,6 +686,28 @@ export default function App() {
               )}
             </div>
 
+            <form
+              className="manual-task-query"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleManualTaskQuery();
+              }}
+            >
+              <label>
+                <span>任务 ID</span>
+                <input
+                  aria-label="任务 ID"
+                  value={manualTaskId}
+                  placeholder="task_xxx"
+                  onChange={(event) => setManualTaskId(event.target.value)}
+                />
+              </label>
+              <button type="submit" disabled={isManualQuerying}>
+                {isManualQuerying ? <LoaderCircle className="spin" size={16} /> : <Search size={16} />}
+                <span>{isManualQuerying ? "查询中" : "查询任务"}</span>
+              </button>
+            </form>
+
             <StatusTimeline status={activeTask?.status} />
 
             <div className="video-stage">
@@ -664,6 +720,13 @@ export default function App() {
                 </div>
               )}
             </div>
+
+            {activeTask?.errorMessage && (
+              <div className="remote-error">
+                <AlertCircle size={16} />
+                <span>{activeTask.errorMessage}</span>
+              </div>
+            )}
 
             <div className="result-actions">
               <button type="button" onClick={() => activeTask && void refreshActiveTask(activeTask.id)} disabled={!activeTask}>
